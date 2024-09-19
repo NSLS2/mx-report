@@ -1,0 +1,33 @@
+<h4>Summary table</h4>
+<table class="table table-bordered table-hover">
+    <thead>
+        <tr>
+            <th>#</th>
+            <th colspan="6" class="vertical-divider">Overall</th>
+            <th colspan="6" class="vertical-divider">Outer Shell</th>
+            <th colspan="7"></th>
+        </tr>
+        <tr>
+            {% for col_name in fastdp_column_names %}
+            <th scope="col">{{ col_name }}</th>
+            {% endfor %}
+        </tr>
+    </thead>
+    <tbody>
+        {% for sample_name, sample_data in full_data.items() %}
+        {% for standard_id, standard_data in sample_data['standard'].items() %}
+        <tr>
+            {% if summary_table %}
+            {% for data in standard_data.fast_dp_row %}
+            <td>{{ data }}</td>
+            {% endfor %}
+            {% elif auto_proc_table %}
+            {% for data in standard_data.auto_proc_row %}
+            <td>{{ data }}</td>
+            {% endfor %}
+            {% endif %}
+        </tr>
+        {% endfor %}
+        {% endfor %}
+    </tbody>
+</table>
