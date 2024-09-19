@@ -164,3 +164,7 @@ cython_debug/
 .vscode/
 
 test_code/
+
+# Shell scripts to ignore
+generate_report.sh
+start_gui.sh
