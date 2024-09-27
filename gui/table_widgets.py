@@ -2,13 +2,13 @@ from PyQt5.QtWidgets import QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget
 
 
 class SummaryTable(QWidget):
-    def __init__(self):
+    def __init__(self, processing_type_col=False):
         super().__init__()
 
         self.table = QTableWidget()
         self.table.setColumnCount(20)
 
-        self.add_headers()
+
 
         """
         self.add_data([
@@ -21,23 +21,33 @@ class SummaryTable(QWidget):
         layout = QVBoxLayout()
         layout.addWidget(self.table)
         self.setLayout(layout)
-
-    def add_headers(self):
-        self.table.insertRow(self.table.rowCount())  # Add a new row
-        self.table.setItem(0, 0, QTableWidgetItem("#"))
-        self.table.setItem(0, 1, QTableWidgetItem("Overall"))
-        self.table.setSpan(0, 1, 1, 6)  # Colspan of 6 for "Overall"
-        self.table.setItem(0, 7, QTableWidgetItem("Outer Shell"))
-        self.table.setSpan(0, 7, 1, 6)  # Colspan of 6 for "Outer Shell"
-        self.table.setItem(0, 13, QTableWidgetItem(""))  # Empty cell for rest
-
-        self.table.insertRow(self.table.rowCount())
-        headers = [
+        self.headers = [
             "Sample Path", "Hi", "Lo", "R_mrg", "cc12", "comp", "mult",
             "Hi", "Lo", "R_mrg", "cc12", "comp", "mult",
             "symm", "a", "b", "c", "alpha", "beta", "gamma"
         ]
-        for i, header in enumerate(headers):
+        if processing_type_col:
+            self.column_offset = 1
+            self.headers = ["Result Type"] + self.headers
+        else:
+            self.column_offset = 0
+        self.add_headers()
+
+    def add_headers(self):
+        self.table.insertRow(self.table.rowCount())  # Add a new row
+        self.table.setItem(0, 0+self.column_offset, QTableWidgetItem("#"))
+        self.table.setItem(0, 1+self.column_offset, QTableWidgetItem("Overall"))
+        self.table.setSpan(0, 1+self.column_offset, 1, 6)  # Colspan of 6 for "Overall"
+        self.table.setItem(0, 7+self.column_offset, QTableWidgetItem("Outer Shell"))
+        self.table.setSpan(0, 7+self.column_offset, 1, 6)  # Colspan of 6 for "Outer Shell"
+        self.table.setItem(0, 13+self.column_offset, QTableWidgetItem(""))  # Empty cell for rest
+
+        self.table.setVerticalHeaderItem(0, QTableWidgetItem(""))
+        self.table.setVerticalHeaderItem(1, QTableWidgetItem(""))
+
+        self.table.insertRow(self.table.rowCount())
+        
+        for i, header in enumerate(self.headers):
             self.table.setItem(1, i, QTableWidgetItem(header))
 
         self.table.resizeColumnsToContents()
@@ -45,6 +55,8 @@ class SummaryTable(QWidget):
     def add_data(self, row_data):
         row_position = self.table.rowCount()
         self.table.insertRow(row_position)
+        offset = 2
+        self.table.setVerticalHeaderItem(row_position, QTableWidgetItem(str(row_position - offset + 1)))
 
         for i, value in enumerate(row_data):
             self.table.setItem(row_position, i, QTableWidgetItem(str(value)))
