@@ -10,6 +10,8 @@ import multiprocessing
 import time
 import os
 
+SAMPLES_PER_PAGE = 10
+
 def init_argparse() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         usage="%(prog)s [OPTION] ...", description="Start the amg report generator"
@@ -36,9 +38,11 @@ def generate_html(context: dict, output_dir: Path):
     template = env.get_template('report_template.html')
     if context['current_page'] > 0:
         output_file_path = output_dir / Path(f"report_{context['current_page']}.html")
-        context['toc_data'][0]['href'] = '../' + context['toc_data'][0]['href'].split("/")[-1]
-        for td in context['toc_data'][1:]:
-            td['href'] = "" + td['href'].split("/")[-1]
+        for sample_name, td in context['toc_data'].items():
+            if sample_name == "FastDP Summary Table":
+                td['href'] = '../' + td['href'].split("/")[-1]
+            else:
+                td['href'] = "" + td['href'].split("/")[-1]
 
     else:
         output_file_path = output_dir / Path("report.html")
@@ -48,20 +52,21 @@ def generate_html(context: dict, output_dir: Path):
     with output_file_path.open('w') as file:
         file.write(html_content)
 
-def generate_report_pages(full_data, samples, report_directory, report_output_directory):
-    samples_per_page = 10
-    toc_data = [{"href": "report.html#summary_table", "sample_name": "FastDP Summary Table"},
-    {"href": "output/report_1.html#autoproc_summary_table", "sample_name": "AutoProc Summary Table"},
-    ]
+def generate_toc_data(samples):
+    toc_data = {"FastDP Summary Table": {"href": "report.html#summary_table", "sample_name": "FastDP Summary Table"},
+    "AutoProc Summary Table": {"href": "output/report_1.html#autoproc_summary_table", "sample_name": "AutoProc Summary Table"},
+    }
     for i, sample in enumerate(samples):
-        sample_page = i//samples_per_page + 2
-        sample_index_in_page = i%samples_per_page
+        sample_page = i//SAMPLES_PER_PAGE + 2
+        sample_index_in_page = i%SAMPLES_PER_PAGE
         href = f"output/report_{sample_page}.html#sample-{sample}"
-        toc_data.append({"href": href, "sample_name": sample})
+        toc_data[sample] =  {"href": href, "sample_name": sample}
+    return toc_data
 
-
-    total_pages = len(samples)//samples_per_page
-    if len(samples)%samples_per_page:
+def generate_report_pages(full_data, samples, report_directory, report_output_directory, toc_data):
+    
+    total_pages = len(samples)//SAMPLES_PER_PAGE
+    if len(samples)%SAMPLES_PER_PAGE:
         total_pages += 1
 
     beamline = next(iter(next(iter(full_data.values()))["standard"].values()))["request_obj"]["beamline"].upper()
@@ -102,8 +107,8 @@ def generate_report_pages(full_data, samples, report_directory, report_output_di
 
     for page_num in range(total_pages):
         current_page = page_num + 2
-        start_index = page_num*samples_per_page
-        end_index = (current_page)*samples_per_page if len(samples) > (current_page)*samples_per_page else len(samples)
+        start_index = page_num*SAMPLES_PER_PAGE
+        end_index = (current_page)*SAMPLES_PER_PAGE if len(samples) > (current_page)*SAMPLES_PER_PAGE else len(samples)
         print(start_index, end_index)
         context.update({
             "title": f"Report page #{current_page}",
@@ -117,7 +122,7 @@ def generate_report_pages(full_data, samples, report_directory, report_output_di
         generate_html(context, output_dir=report_output_directory)
 
 
-def process_single_sample(full_data, sample, collection_data_path):
+def process_single_sample(full_data, sample, collection_data_path, toc_data):
     sample_data = full_data[sample]
     for standard_id, standard_collection in sample_data['standard'].items():
         fast_dp_row = utils.get_standard_fastdp_summary(standard_collection['request_obj']['directory'])
@@ -127,11 +132,12 @@ def process_single_sample(full_data, sample, collection_data_path):
         else:
             diffraction_images = utils.create_grid_matplotlib_image(utils.get_standard_images(standard_collection['request_obj']['file_prefix'], 
                                                     standard_collection['request_obj']['directory']))
-        
-        
-        # fast_dp_row = fast_dp_row if fast_dp_row is not None else 
+        fast_dp_row = list(fast_dp_row)
+        fast_dp_row[0] = f'<a href="{toc_data.get(sample, {"href": "#"})["href"]}">{fast_dp_row[0]}</a>'
         auto_proc_row = utils.get_standard_autoproc_summary(standard_collection['request_obj']['directory'])
-        auto_proc_row = auto_proc_row if auto_proc_row is not None else (sample,) + ("-",) * 19
+        auto_proc_row = auto_proc_row if auto_proc_row else (sample,) + ("-",) * 19
+        auto_proc_row = list(auto_proc_row)
+        auto_proc_row[0] = f'<a href="{toc_data.get(sample, {"href": "#"})["href"].split("/")[-1]}">{auto_proc_row[0]}</a>'
         #standard_collection.update({"diffraction_images": diffraction_images,
         #                            "fast_dp_row": fast_dp_row,
         #                            "auto_proc_row": auto_proc_row})
@@ -148,7 +154,10 @@ def process_single_sample(full_data, sample, collection_data_path):
         for raster_id, raster_req in sample_data['rasters'][standard_id].items():
             jpeg_path = utils.get_jpeg_path(raster_req, collection_data_path)
             raster_heatmap_data = utils.get_raster_spot_count(raster_req)
-            heatmap_image = utils.create_matplotlib_image(raster_heatmap_data)
+            i, j = None, None
+            if max_index:=raster_req["request_obj"]['max_raster']['index'] is not None:
+                i,j = utils.calculate_matrix_index(max_index, *utils.determine_raster_shape(raster_req["request_obj"]["rasterDef"]))
+            heatmap_image = utils.create_matplotlib_image(raster_heatmap_data, i, j)
             lsdc_image = utils.encode_image_to_base64(jpeg_path)
             try:
                 raster_req['time'] = utils.convert_epoch_to_datetime(int(raster_req['time']))
@@ -210,6 +219,7 @@ def generate_report(report_output_directory: Path,
 
     samples = [k for k, v in json_data.items() if v['rasters'] and v['standard']]
     # samples = samples[:11]
+    toc_data = generate_toc_data(samples)
 
     num_processes = 8
     
@@ -228,7 +238,7 @@ def generate_report(report_output_directory: Path,
             with multiprocessing.Pool(processes=num_processes) as pool:
                 #with tqdm(total=len(samples)) as pbar:
                 pool.starmap(process_single_sample, 
-                                    [(full_data, sample, collection_data_path) for sample in samples],
+                                    [(full_data, sample, collection_data_path, toc_data) for sample in samples],
                                     #callback=lambda _: pbar.update(completed)
                                     )
 
@@ -252,7 +262,7 @@ def generate_report(report_output_directory: Path,
     with data_pickle_file.open("wb") as f:
         pickle.dump(full_data, f)
 
-    generate_report_pages(full_data, samples, report_directory, report_output_directory)
+    generate_report_pages(full_data, samples, report_directory, report_output_directory, toc_data)
 
     
 
