@@ -13,13 +13,13 @@
     </thead>
     <tbody>
         <tr>
-            <td>{{ raster_data['uid'] }}</td>
-            <td>{{ raster_data['time'] }}</td>
-            <td>{{ raster_data['request_obj']['sweep_start'] }}</td>
-            <td>{{ raster_data['request_obj']['sweep_end'] }}</td>
-            <td>{{ raster_data['request_obj']['img_width'] }}</td>
-            <td>{{ raster_data['request_obj']['exposure_time'] }}</td>
-            <td>{{ raster_data['request_obj']['detDist'] }}</td>
+            <td>{{ raster_data.uid }}</td>
+            <td>{{ raster_data.request_time }}</td>
+            <td>{{ raster_data.request_def.sweep_start }}</td>
+            <td>{{ raster_data.request_def.sweep_end }}</td>
+            <td>{{ raster_data.request_def.img_width }}</td>
+            <td>{{ raster_data.request_def.exposure_time }}</td>
+            <td>{{ raster_data.request_def.det_dist }}</td>
         </tr>
     </tbody>
 </table>
@@ -27,29 +27,29 @@
 <div class="image-container">
     <div class="plot">
         <h2>Raster Heatmap</h2>
-        <img src="data:image/png;base64,{{ raster_data.plot_image }}" alt="Heatmap Image">
+        <img src="data:image/png;base64,{{ raster_data.result.plot_image }}" alt="Heatmap Image">
     </div>
     <div class="jpeg-image">
         <h2>Sample Image</h2>
-        <img src="data:image/jpeg;base64,{{ raster_data.jpeg_image }}" alt="JPEG Image">
+        <img src="data:image/jpeg;base64,{{ raster_data.result.jpeg_image }}" alt="JPEG Image">
     </div>
 </div>
 
 <div class="image-container">
     <div class="plot">
-        <img src="data:image/png;base64, {{ raster_data.top_3_spots }}">
+        <img src="data:image/png;base64, {{ raster_data.result.top_frames }}">
     </div>
 </div>
 <div class="image-container">
     <div class="plot">
-        <img src="data:image/png;base64, {{ raster_data.hist_resolutions }}">
+        <img src="data:image/png;base64, {{ raster_data.result.hist_resolutions }}">
     </div>
 
     <div class="plot">
-        <img src="data:image/png;base64, {{ raster_data.hist_mean_neighbor_dist }}">
+        <img src="data:image/png;base64, {{ raster_data.result.hist_mean_neighbor_dist }}">
     </div>
 
     <div class="plot">
-        <img src="data:image/png;base64, {{ raster_data.hist_spot_count }}">
+        <img src="data:image/png;base64, {{ raster_data.result.hist_spot_count }}">
     </div>
 </div>

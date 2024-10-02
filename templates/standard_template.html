@@ -12,13 +12,13 @@
     </thead>
     <tbody>
         <tr>
-            <td>{{ standard_data['uid'] }}</td>
-            <td>{{ standard_data['time'] }}</td>
-            <td>{{ standard_data['request_obj']['sweep_start'] }}</td>
-            <td>{{ standard_data['request_obj']['sweep_end'] }}</td>
-            <td>{{ standard_data['request_obj']['img_width'] }}</td>
-            <td>{{ standard_data['request_obj']['exposure_time'] }}</td>
-            <td>{{ standard_data['request_obj']['detDist'] }}</td>
+            <td>{{ standard_data.uid }}</td>
+            <td>{{ standard_data.result.result_time }}</td>
+            <td>{{ standard_data.request_def.sweep_start }}</td>
+            <td>{{ standard_data.request_def.sweep_end }}</td>
+            <td>{{ standard_data.request_def.img_width }}</td>
+            <td>{{ standard_data.request_def.exposure_time }}</td>
+            <td>{{ standard_data.request_def.det_dist }}</td>
         </tr>
     </tbody>
 </table>
@@ -38,19 +38,19 @@
     </thead>
     <tbody>
         <tr>
-            {% for data in standard_data.fast_dp_row %}
+            {% for data in standard_data.result.fast_dp_row %}
             <td>{{ data }}</td>
             {% endfor %}
         </tr>
     </tbody>
 </table>
-{% if standard_data.diffraction_images %}
+{% if standard_data.result.diffraction_images %}
 <div class="plot">
     <h2>Standard collection diffraction images</h2>
-    <img src="data:image/png;base64,{{ standard_data.diffraction_images }}" alt="Diffraction Images">
+    <img src="data:image/png;base64,{{ standard_data.result.diffraction_images }}" alt="Diffraction Images">
 </div>
 {% endif %}
 <hr class="my-2" style="border-top: 1px solid lightgray; width: 50%;">
-{% for raster_id, raster_data in sample_data['rasters'][standard_id].items() %}
+{% for raster_id, raster_data in sample_data.rasters[standard_id].items() %}
 {% include 'raster_template.html' %}
 {% endfor %}

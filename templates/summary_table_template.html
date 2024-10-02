@@ -18,11 +18,11 @@
         {% for standard_id, standard_data in sample_data['standard'].items() %}
         <tr>
             {% if summary_table %}
-            {% for data in standard_data.fast_dp_row %}
+            {% for data in standard_data.result.fast_dp_row %}
             <td>{{ data }}</td>
             {% endfor %}
             {% elif auto_proc_table %}
-            {% for data in standard_data.auto_proc_row %}
+            {% for data in standard_data.result.auto_proc_row %}
             <td>{{ data }}</td>
             {% endfor %}
             {% endif %}
