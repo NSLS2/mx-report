@@ -18,6 +18,8 @@ from datetime import datetime
 import matplotlib
 import tqdm
 import os
+from amostra.client import commands as amostra_client
+from analysisstore.client import commands as analysis_client
 from utils.models import Sample, Request, SampleData, CollectionData, RasterResult
 
 matplotlib.use("Agg")
@@ -225,21 +227,31 @@ def encode_image_to_base64(image_path: Path):
         return image_base64
 
 
-client = pymongo.MongoClient(os.environ["MONGODB"])
-sample_db = client.amostra
-sample_collection = sample_db.sample
-request_collection = sample_db.request
+# client = pymongo.MongoClient(os.environ["MONGODB"])
+# sample_db = client.amostra
+# sample_collection = sample_db.sample
+# request_collection = sample_db.request
+# container_collection = sample_db.
+amostra_db_params = {"host": os.environ["MONGODB"], "port": "7770"}
+request_collection = amostra_client.RequestReference(**amostra_db_params)
+sample_collection = amostra_client.SampleReference(**amostra_db_params)
+container_collection = amostra_client.ContainerReference(**amostra_db_params)
+analysis_store_client = analysis_client.AnalysisClient(
+    {"host": os.environ["MONGODB"], "port": "7773"}
+)
 
 
 def get_auto_collections(base_path):
     path_to_remove = Path("/nsls2/data4")
-    regex_queries = [
-        {"request_obj.directory": {"$regex": f"{path.relative_to(path_to_remove)}"}}
-        for path in base_path.iterdir()
-        if not path.stem.endswith("_dir")
-    ]
+    #regex_queries = [
+    #    {"request_obj.directory": {"$regex": f"{path.relative_to(path_to_remove)}"}}
+    #    for path in base_path.iterdir()
+    #    if not path.stem.endswith("_dir")
+    #]
     auto_collections = request_collection.find(
-        {"$or": regex_queries, "request_obj.centeringOption": "AutoRaster"}
+        **{
+            "request_obj.directory": {"$regex": f"{base_path.relative_to(path_to_remove)}"},
+            "request_obj.centeringOption": "AutoRaster"}
     )
     return auto_collections
 
@@ -248,13 +260,11 @@ def get_sample_data_and_rasters(auto_collections):
     print("getting sample data and rasters")
     # all_data = defaultdict(dict)
     all_data = {"samples": {}}
-    for standard_collection in tqdm.tqdm(
-        auto_collections,
-        total=auto_collections.collection.count_documents(
-            auto_collections._Cursor__spec
-        ),
-    ):
-        sample = sample_collection.find({"uid": standard_collection["sample"]}).next()
+    for standard_collection in auto_collections:
+        sample = dict(
+            next(sample_collection.find(**{"uid": standard_collection["sample"]}))
+        )
+        standard_collection = dict(standard_collection)
         standard_collection.pop("_id", None)
         sample.pop("_id", None)
 
@@ -265,7 +275,7 @@ def get_sample_data_and_rasters(auto_collections):
             print(standard_collection)
         rasters = list(
             request_collection.find(
-                {"request_obj.parentReqID": str(standard_collection.uid)}
+                **{"request_obj.parentReqID": str(standard_collection.uid)}
             )
         )
         all_data["samples"][sample.name] = {}
@@ -275,6 +285,7 @@ def get_sample_data_and_rasters(auto_collections):
         }  # defaultdict(dict)
         all_data["samples"][sample.name]["standard"] = {}
         for raster in rasters:
+            raster = dict(raster)
             raster.pop("_id", None)
             try:
                 raster = Request(**raster)
