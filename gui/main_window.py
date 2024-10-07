@@ -110,26 +110,39 @@ class MainWindow(QtWidgets.QMainWindow):
         self.canvas.mpl_connect("motion_notify_event", self.on_hover)
 
     def populate_full_summary_table(self):
-        for sample_name, data in self.full_data.samples.items():
-            for standard_uid, standard_req in data.standard.items():
-                # fast_dp_row = utils.get_standard_fastdp_summary(standard_req['request_obj']['directory'])
-                # fast_dp_row = fast_dp_row if fast_dp_row is not None else (sample_name,) + ("N/A",) * 19
-                blank_row = (sample_name,) + ("-",) * 19
-                fast_dp_row = (
-                    standard_req.result.fast_dp_row
-                    if standard_req.result.fast_dp_row
-                    else blank_row
-                )
-                self.full_summary_table.add_data(fast_dp_row)
-                blank_row_autoproc = (sample_name,) + ("-",) * 19
-                auto_proc_row = (
-                    standard_req.result.auto_proc_row
-                    if standard_req.result.auto_proc_row
-                    else blank_row_autoproc
-                )
-                if not auto_proc_row:
-                    auto_proc_row = blank_row_autoproc
-                self.autoproc_summary_table.add_data(auto_proc_row)
+        for puck_name, sample_names in self.full_data.puck_data.items():
+            for sample_name in sample_names:
+                data = self.full_data.samples[sample_name]
+                # for sample_name, data in self.full_data.samples.items():
+                for standard_uid, standard_req in data.standard.items():
+                    # fast_dp_row = utils.get_standard_fastdp_summary(standard_req['request_obj']['directory'])
+                    # fast_dp_row = fast_dp_row if fast_dp_row is not None else (sample_name,) + ("N/A",) * 19
+                    blank_row = [
+                        sample_name,
+                    ] + [
+                        "-",
+                    ] * 19
+                    fast_dp_row = (
+                        standard_req.result.fast_dp_row
+                        if standard_req.result.fast_dp_row
+                        else blank_row
+                    )
+                    fast_dp_row[0] = sample_name
+                    self.full_summary_table.add_data(fast_dp_row)
+                    blank_row_autoproc = [
+                        sample_name,
+                    ] + [
+                        "-",
+                    ] * 19
+                    auto_proc_row = (
+                        standard_req.result.auto_proc_row
+                        if standard_req.result.auto_proc_row
+                        else blank_row_autoproc
+                    )
+                    if not auto_proc_row:
+                        auto_proc_row = blank_row_autoproc
+                    auto_proc_row[0] = sample_name
+                    self.autoproc_summary_table.add_data(auto_proc_row)
 
     def handle_tree_clicked(self, data: dict):
         if data["item_type"] == "raster":

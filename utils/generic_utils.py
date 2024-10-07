@@ -307,8 +307,10 @@ def get_sample_data_and_rasters(auto_collections):
     puck_data = container_collection.find(content={"$in": list(sample_ids.keys())})
     print(f"PUCK DATA: {puck_data}")
     puck_contents = {}
-    for pd in puck_data:
-        puck_contents[pd["name"]] = [sample_ids[uid] for uid in pd["content"] if uid]
+    for pdata in puck_data:
+        puck_contents[pdata["name"]] = [
+            sample_ids[uid] for uid in pdata["content"] if uid
+        ]
     all_data["puck_data"] = puck_contents
 
     all_data = CollectionData(**all_data)
