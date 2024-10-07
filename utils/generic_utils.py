@@ -263,7 +263,8 @@ def get_sample_data_and_rasters(auto_collections):
     print("getting sample data and rasters")
     # all_data = defaultdict(dict)
     all_data = {"samples": {}}
-    sample_ids = {}
+    samples = []
+    puck_ids = set()
     for standard_collection in tqdm.tqdm(auto_collections):
         sample = dict(
             next(sample_collection.find(**{"uid": standard_collection["sample"]}))
@@ -273,7 +274,9 @@ def get_sample_data_and_rasters(auto_collections):
         sample.pop("_id", None)
 
         sample = Sample(**sample)
-        sample_ids[str(sample.uid)] = sample.name
+        # sample_ids[str(sample.uid)] = sample.name
+        samples.append(sample)
+        puck_ids.add(str(sample.container))
         try:
             standard_collection = Request(**standard_collection)
         except Exception as e:
@@ -304,12 +307,13 @@ def get_sample_data_and_rasters(auto_collections):
         all_data["samples"][sample.name]["standard"][standard_collection.uid] = (
             standard_collection
         )
-    puck_data = container_collection.find(content={"$in": list(sample_ids.keys())})
-    print(f"PUCK DATA: {puck_data}")
+
+    puck_data = container_collection.find(uid={"$in": list(puck_ids)})
     puck_contents = {}
     for pdata in puck_data:
+        print(pdata["name"], pdata["uid"])
         puck_contents[pdata["name"]] = [
-            sample_ids[uid] for uid in pdata["content"] if uid
+            sample.name for sample in samples if str(sample.container) == pdata["uid"]
         ]
     all_data["puck_data"] = puck_contents
 
@@ -433,9 +437,31 @@ def get_spot_positions(req: Request, indices, reso_table):
                 max_resolution = matches.values[0]
             else:
                 max_resolution = 0
-            axs[i].text(0, radius + 5, f"Radius = {max_resolution:.2f}", color="red")
             axs[i].text(
-                0, radius / 2 + 5, f"Radius = {max_resolution/2:.2f}", color="red"
+                0,
+                radius + 5,
+                f"{max_resolution:.2f} Å",
+                color="red",
+                bbox=dict(
+                    facecolor="white",
+                    edgecolor="black",
+                    boxstyle="round,pad=0.5",
+                    alpha=1,
+                ),
+                zorder=10,
+            )
+            axs[i].text(
+                0,
+                radius / 2 + 5,
+                f"{max_resolution/2:.2f} Å",
+                color="red",
+                bbox=dict(
+                    facecolor="white",
+                    edgecolor="black",
+                    boxstyle="round,pad=0.5",
+                    alpha=1,
+                ),
+                zorder=10,
             )
 
             axs[i].set_aspect("equal", adjustable="box")
