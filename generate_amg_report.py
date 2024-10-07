@@ -2,7 +2,7 @@ import argparse
 from pathlib import Path
 import pickle
 import json
-from typing import Optional, Dict
+from typing import Optional, Dict, Any
 import utils
 from tqdm import tqdm
 from jinja2 import Environment, FileSystemLoader
@@ -56,7 +56,7 @@ def generate_html(context: dict, output_dir: Path):
         file.write(html_content)
 
 
-def generate_toc_data(samples):
+def generate_toc_data(puck_data: dict[str, list[str]]):
     toc_data = {
         "FastDP Summary Table": {
             "href": "report.html#summary_table",
@@ -67,28 +67,31 @@ def generate_toc_data(samples):
             "sample_name": "AutoProc Summary Table",
         },
     }
-    for i, sample in enumerate(samples):
-        sample_page = i // SAMPLES_PER_PAGE + 2
-        sample_index_in_page = i % SAMPLES_PER_PAGE
-        href = f"output/report_{sample_page}.html#sample-{sample}"
-        toc_data[sample] = {"href": href, "sample_name": sample}
+    # for i, sample in enumerate(samples):
+    for i, (puck, samples) in enumerate(puck_data.items()):
+        sample_page = i + 2
+        for sample in samples:
+            href = f"output/report_{sample_page}.html#sample-{sample}"
+            toc_data[sample] = {"href": href, "sample_name": sample}
     return toc_data
 
 
 def generate_report_pages(
-    full_data, samples, report_directory, report_output_directory, toc_data
+    json_data, samples, report_directory, report_output_directory, toc_data
 ):
-    total_pages = len(samples) // SAMPLES_PER_PAGE
-    if len(samples) % SAMPLES_PER_PAGE:
-        total_pages += 1
+    full_data = json_data.samples
+    # total_pages = len(samples) // SAMPLES_PER_PAGE
+    total_pages = len(json_data.puck_data)
+    # if len(samples) % SAMPLES_PER_PAGE:
+    #    total_pages += 1
 
     beamline = next(
         iter(next(iter(full_data.values())).standard.values())
     ).request_def.beamline.upper()
+    print(json_data.puck_data)
 
     proposal = next(iter(full_data.values())).sample.proposal_id
     subtitle = f"Proposal: {proposal}  Beamline: {beamline}"
-
     context = {
         "title": "FastDP Report",
         "subtitle": subtitle,
@@ -119,6 +122,7 @@ def generate_report_pages(
         "summary_table": True,
         "auto_proc_table": False,
         "full_data": full_data,
+        "puck_data": json_data.puck_data,
         "total_pages": None,
     }
     generate_html(context, output_dir=report_directory)
@@ -153,27 +157,29 @@ def generate_report_pages(
         "summary_table": False,
         "auto_proc_table": True,
         "full_data": full_data,
+        "puck_data": json_data.puck_data,
         "total_pages": None,
     }
     generate_html(context, output_dir=report_output_directory)
 
     for page_num in range(total_pages):
         current_page = page_num + 2
-        start_index = page_num * SAMPLES_PER_PAGE
-        end_index = (
-            (current_page) * SAMPLES_PER_PAGE
-            if len(samples) > (current_page) * SAMPLES_PER_PAGE
-            else len(samples)
-        )
-        print(start_index, end_index)
+        # start_index = page_num * SAMPLES_PER_PAGE
+        # end_index = (
+        #    (current_page) * SAMPLES_PER_PAGE
+        #    if len(samples) > (current_page) * SAMPLES_PER_PAGE
+        #    else len(samples)
+        # )
+        # print(start_index, end_index)
         # print(full_data[samples[start_index]].result.)
+        current_puck = list(json_data.puck_data.keys())[page_num]
         context.update(
             {
-                "title": f"Report page #{current_page}",
+                "title": f"Report for {current_puck}",
                 "subtitle": subtitle,
                 "full_data": {
                     sample: full_data[sample]
-                    for sample in samples[start_index:end_index]
+                    for sample in json_data.puck_data[current_puck]
                 },
                 "current_page": current_page,
                 "summary_table": False,
@@ -291,7 +297,7 @@ def generate_report(
     report_output_directory: Path,
     report_data_directory: Path,
     data_dictionary: Optional[dict],
-    json_data: Optional[dict],
+    json_data: Optional[CollectionData | dict[str, SampleData] | dict[str, Any]],
     database_json_file: Path,
     data_pickle_file: Path,
     collection_data_path: Path,
@@ -308,16 +314,21 @@ def generate_report(
     if isinstance(json_data, dict):
         json_data = CollectionData.model_validate(json_data)
 
-    json_data = json_data.samples
-    samples = [k for k, v in json_data.items()]
+    if full_data:
+        json_data = full_data
+        full_data = json_data.samples
+
+    # json_data = json_data.samples
+    print(type(json_data.samples))
+    samples = [k for k, v in json_data.samples.items()]
     # samples = samples[:11]
-    toc_data = generate_toc_data(samples)
+    toc_data = generate_toc_data(json_data.puck_data)
 
     num_processes = 8
 
     start_time = time.time()
     if full_data is None and json_data is not None:
-        full_data = json_data
+        full_data = json_data.samples
 
         with multiprocessing.Manager() as manager:
             # Initialize the shared dictionary with the existing dictionary
@@ -339,6 +350,8 @@ def generate_report(
 
             # Convert shared dictionary to a regular dictionary
             full_data = dict(full_data)  # Convert to a standard Python dict
+        json_data.samples = full_data
+
     end_time = time.time()
     elapsed_time = end_time - start_time
     hours, rem = divmod(elapsed_time, 3600)
@@ -355,10 +368,10 @@ def generate_report(
     """
 
     with data_pickle_file.open("wb") as f:
-        pickle.dump(full_data, f)
+        pickle.dump(json_data, f)
 
     generate_report_pages(
-        full_data, samples, report_directory, report_output_directory, toc_data
+        json_data, samples, report_directory, report_output_directory, toc_data
     )
 
 

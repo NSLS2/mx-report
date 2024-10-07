@@ -49,12 +49,35 @@
             <nav class="col-md-3 col-lg-2 sidebar bg-light">
                 <h5>Table of Contents</h5>
                 <ul class="nav flex-column">
-                    {% for entry in toc_data.values() %}
-
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ entry.href }}">
-                            Sample {{ entry.sample_name }}
+                        <a class="nav-link" href="{{ toc_data['FastDP Summary Table'].href }}">
+                            FastDP Summary Table
                         </a>
+                    </li>
+                    <li class="nav-item"></li>
+                        <a class="nav-link" href="{{ toc_data['AutoProc Summary Table'].href }}">
+                            AutoProc Summary Table
+                        </a>
+                    </li>
+                    {% for puck_name in puck_data.keys() %}
+                    <li class="nav-item">
+                        <a class="nav-link" data-bs-toggle="collapse" href="#collapse-{{ loop.index }}" role="button"
+                            aria-expanded={{ "true" if loop.index + 1==current_page else "false" }}
+                            aria-controls="collapse-{{ loop.index }}">
+                            Puck {{ loop.index }}. {{ puck_name }}
+                        </a>
+
+
+                        <ul class="collapse {{ "show" if loop.index + 1==current_page }}" id="collapse-{{ loop.index }}">
+                            {% for sample_name in puck_data[puck_name] %}
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ toc_data[sample_name].href }}">
+                                    Sample {{ loop.index }}. {{ sample_name }}
+                                </a>
+                            </li>
+                            {% endfor %}
+                        </ul>
+
                     </li>
                     {% endfor %}
                 </ul>

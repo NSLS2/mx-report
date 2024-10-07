@@ -243,15 +243,18 @@ analysis_store_client = analysis_client.AnalysisClient(
 
 def get_auto_collections(base_path):
     path_to_remove = Path("/nsls2/data4")
-    #regex_queries = [
+    # regex_queries = [
     #    {"request_obj.directory": {"$regex": f"{path.relative_to(path_to_remove)}"}}
     #    for path in base_path.iterdir()
     #    if not path.stem.endswith("_dir")
-    #]
+    # ]
     auto_collections = request_collection.find(
         **{
-            "request_obj.directory": {"$regex": f"{base_path.relative_to(path_to_remove)}"},
-            "request_obj.centeringOption": "AutoRaster"}
+            "request_obj.directory": {
+                "$regex": f"{base_path.relative_to(path_to_remove)}"
+            },
+            "request_obj.centeringOption": "AutoRaster",
+        }
     )
     return auto_collections
 
@@ -260,6 +263,7 @@ def get_sample_data_and_rasters(auto_collections):
     print("getting sample data and rasters")
     # all_data = defaultdict(dict)
     all_data = {"samples": {}}
+    sample_ids = {}
     for standard_collection in auto_collections:
         sample = dict(
             next(sample_collection.find(**{"uid": standard_collection["sample"]}))
@@ -269,6 +273,7 @@ def get_sample_data_and_rasters(auto_collections):
         sample.pop("_id", None)
 
         sample = Sample(**sample)
+        sample_ids[str(sample.uid)] = sample.name
         try:
             standard_collection = Request(**standard_collection)
         except Exception as e:
@@ -299,6 +304,12 @@ def get_sample_data_and_rasters(auto_collections):
         all_data["samples"][sample.name]["standard"][standard_collection.uid] = (
             standard_collection
         )
+    puck_data = container_collection.find(content={"$in": list(sample_ids.keys())})
+    print(f"PUCK DATA: {puck_data}")
+    puck_contents = {}
+    for pd in puck_data:
+        puck_contents[pd["name"]] = [sample_ids[uid] for uid in pd["content"] if uid]
+    all_data["puck_data"] = puck_contents
 
     all_data = CollectionData(**all_data)
     return all_data

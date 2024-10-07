@@ -248,4 +248,5 @@ class SampleData(BaseModel):
 
 class CollectionData(BaseModel):
     samples: Dict[str, SampleData]
+    puck_data: Dict[str, List[str]]
     model_config = {"frozen": False}

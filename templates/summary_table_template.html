@@ -2,21 +2,26 @@
 <table class="table table-bordered table-hover">
     <thead>
         <tr>
-            <th>#</th>
+            <th colspan="2">#</th>
             <th colspan="6" class="vertical-divider">Overall</th>
             <th colspan="6" class="vertical-divider">Outer Shell</th>
             <th colspan="7"></th>
         </tr>
         <tr>
+            <th>Puck</th>
             {% for col_name in fastdp_column_names %}
             <th scope="col">{{ col_name }}</th>
             {% endfor %}
         </tr>
     </thead>
     <tbody>
-        {% for sample_name, sample_data in full_data.items() %}
-        {% for standard_id, standard_data in sample_data['standard'].items() %}
+
+        {% for puck_name, samples in puck_data.items() %}
+        {% for sample_name in samples %}
+        {% set outer_loop = loop %}
+        {% for standard_id, standard_data in full_data[sample_name]['standard'].items() %}
         <tr>
+            <td> {{ puck_name if outer_loop.index == 1 }} </td>
             {% if summary_table %}
             {% for data in standard_data.result.fast_dp_row %}
             <td>{{ data }}</td>
@@ -27,6 +32,7 @@
             {% endfor %}
             {% endif %}
         </tr>
+        {% endfor %}
         {% endfor %}
         {% endfor %}
     </tbody>
