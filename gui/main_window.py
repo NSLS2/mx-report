@@ -74,9 +74,10 @@ class MainWindow(QtWidgets.QMainWindow):
         layout.addWidget(self.canvas, 0, 1, 1, 1)
 
         self.sample_tree = SampleTree(self)
+
         layout.addWidget(self.sample_tree, 0, 0, 3, 1)
-        self.sample_tree.populate_tree(self.full_data)
-        self.sample_tree.itemDataClicked.connect(self.handle_tree_clicked)
+        self.sample_tree.tree.populate_tree(self.full_data)
+        self.sample_tree.tree.itemDataClicked.connect(self.handle_tree_clicked)
 
         self.sample_cam_image = QtWidgets.QLabel(self)
         layout.addWidget(self.sample_cam_image, 0, 2, 1, 1)
