@@ -89,8 +89,8 @@ def create_histogram_image(df, columns, xlabel="", ylabel="", title="", color="r
         # This assumes that we are plotting multiple histograms
         plt.legend()
         plt.minorticks_on()
-        plt.axvline(x=1.5, color="blue", linestyle=":", linewidth=2, label="x=1.5")
-        plt.axvline(x=3, color="blue", linestyle=":", linewidth=2, label="x=3")
+        plt.axvline(x=1.5, color="red", linestyle=":", linewidth=2, label="x=1.5")
+        plt.axvline(x=3, color="red", linestyle=":", linewidth=2, label="x=3")
     buffer = io.BytesIO()
     plt.savefig(buffer, format="png")
     buffer.seek(0)
@@ -426,17 +426,21 @@ def get_spot_positions(req: Request, indices, reso_table):
             diff = df - beam_center
             distances = np.sqrt(diff[:, 0] ** 2 + diff[:, 1] ** 2)
             radius = np.max(distances)
-            circle = Circle((0, 0), radius, color="red", fill=False, linestyle="--")
+            median_radius = np.median(distances)
+            circle = Circle((0, 0), radius, color="blue", fill=False, linestyle="--")
             circle2 = Circle(
-                (0, 0), radius / 2, color="red", fill=False, linestyle="--"
+                (0, 0), median_radius, color="green", fill=False, linestyle="--"
             )
             axs[i].add_patch(circle)
             axs[i].add_patch(circle2)
             matches = reso_table[reso_table["frame"] == idx]["max_resolution"]
+            median_matches = reso_table[reso_table["frame"] == idx]["median_resolution"]
             if len(matches) > 0:
                 max_resolution = matches.values[0]
+                median_resolution = median_matches.values[0]
             else:
                 max_resolution = 0
+                median_resolution = 0
             axs[i].text(
                 0,
                 radius + 5,
@@ -452,8 +456,8 @@ def get_spot_positions(req: Request, indices, reso_table):
             )
             axs[i].text(
                 0,
-                radius / 2 + 5,
-                f"{max_resolution/2:.2f} Å",
+                median_radius + 5,
+                f"{median_resolution:.2f} Å",
                 color="red",
                 bbox=dict(
                     facecolor="white",
