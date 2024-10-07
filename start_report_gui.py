@@ -9,10 +9,15 @@ import sys
 import yaml
 import pickle
 
+
 def start_app(config_path, collection_data, current_directory):
     app = QtWidgets.QApplication(sys.argv)
     # app.setWindowIcon(QIcon(str(Path.cwd() / Path("gui/assets/icon.png"))))
-    ex = MainWindow(config_path=config_path, collection_data=collection_data, data_path = current_directory)
+    ex = MainWindow(
+        config_path=config_path,
+        collection_data=collection_data,
+        data_path=current_directory,
+    )
     ex.show()
     sys.exit(app.exec_())
 
@@ -36,7 +41,7 @@ def init_argparse() -> argparse.ArgumentParser:
         "--report-dir",
         dest="report_dir",
         help="Optionally specify the directory where the report directory is",
-        default="amg_report"
+        default="amg_report",
     )
     return parser
 
@@ -60,14 +65,16 @@ def main() -> None:
     data_pickle_file = data_directory / Path("data.pickle")
 
     if not data_pickle_file.exists():
-        print(f"Report data file not found at {data_pickle_file.absolute()}, please run the report script")
+        print(
+            f"Report data file not found at {data_pickle_file.absolute()}, please run the report script"
+        )
         return
-    
+
     try:
-        with data_pickle_file.open('rb') as f:
+        with data_pickle_file.open("rb") as f:
             collection_data = pickle.load(f)
     except Exception as e:
-        print("Error importing data file: {e}.\nRecommend rerunning report script")
+        print(f"Error importing data file: {e}.\nRecommend rerunning report script")
 
     start_app(config_path, collection_data, current_directory)
 
