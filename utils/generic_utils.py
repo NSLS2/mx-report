@@ -78,10 +78,10 @@ def create_matplotlib_image(data, max_index_x=None, max_index_y=None):
     return image_base64
 
 
-def create_histogram_image(df, columns, xlabel="", ylabel="", title=""):
+def create_histogram_image(df, columns, xlabel="", ylabel="", title="", color="red"):
     values = [df[column].to_numpy() for column in columns]
     plt.figure(figsize=(6, 4))
-    plt.hist(values, bins=20, label=columns)
+    plt.hist(values, bins=20, label=columns, histtype="stepfilled", color=color)
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
     plt.title(title)
@@ -89,8 +89,8 @@ def create_histogram_image(df, columns, xlabel="", ylabel="", title=""):
         # This assumes that we are plotting multiple histograms
         plt.legend()
         plt.minorticks_on()
-        plt.axvline(x=1.5, color="red", linestyle=":", linewidth=2, label="x=1.5")
-        plt.axvline(x=3, color="red", linestyle=":", linewidth=2, label="x=3")
+        plt.axvline(x=1.5, color="blue", linestyle=":", linewidth=2, label="x=1.5")
+        plt.axvline(x=3, color="blue", linestyle=":", linewidth=2, label="x=3")
     buffer = io.BytesIO()
     plt.savefig(buffer, format="png")
     buffer.seek(0)
@@ -264,7 +264,7 @@ def get_sample_data_and_rasters(auto_collections):
     # all_data = defaultdict(dict)
     all_data = {"samples": {}}
     sample_ids = {}
-    for standard_collection in auto_collections:
+    for standard_collection in tqdm.tqdm(auto_collections):
         sample = dict(
             next(sample_collection.find(**{"uid": standard_collection["sample"]}))
         )
@@ -433,7 +433,10 @@ def get_spot_positions(req: Request, indices, reso_table):
                 max_resolution = matches.values[0]
             else:
                 max_resolution = 0
-            axs[i].text(0, radius + 5, f"Radius = {max_resolution:.2f}", color="blue")
+            axs[i].text(0, radius + 5, f"Radius = {max_resolution:.2f}", color="red")
+            axs[i].text(
+                0, radius / 2 + 5, f"Radius = {max_resolution/2:.2f}", color="red"
+            )
 
             axs[i].set_aspect("equal", adjustable="box")
 

@@ -279,6 +279,7 @@ def process_single_sample(
                     "Distance ($\AA$)",
                     "No. of raster grid cells",
                     "All raster cells med/max res.",
+                    ["blue", "green"],
                 )
                 raster_req.result.hist_spot_count = utils.create_histogram_image(
                     reso_table,
@@ -286,6 +287,7 @@ def process_single_sample(
                     "Number of spots",
                     "No. of raster grid cells",
                     "All raster cells spot count",
+                    "orange",
                 )
     full_data[sample] = sample_data
     # with lock:
