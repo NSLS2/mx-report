@@ -8,7 +8,7 @@ from pymongo import collection
 import requests
 from qtpy import QtCore, QtGui, QtWidgets
 from qtpy.QtCore import Qt, Signal, QSortFilterProxyModel
-from utils.models import CollectionData, SampleData
+from utils.models import CollectionData, Sample
 
 if typing.TYPE_CHECKING:
     from gui.main_window import MainWindow
@@ -95,7 +95,6 @@ class SampleTreeWidget(QtWidgets.QTreeView):
     def on_item_clicked(self, index):
         source_index = self.proxy_model.mapToSource(index)
         item = self.sample_model.itemFromIndex(source_index)
-        print(item)
         if item is not None:
             item_data = item.data(Qt.UserRole)
             self.itemDataClicked.emit(item_data)
@@ -107,7 +106,7 @@ class SampleTreeWidget(QtWidgets.QTreeView):
             root.appendRow(puck_item)
 
             for sample_index, sample_name in enumerate(sample_list):
-                collection_data = data.samples[sample_name]
+                collection_data = data.sample_collections[sample_name]
                 sample_item = QtGui.QStandardItem(f"{sample_index+1}. {sample_name}")
                 sample_item.setData(
                     {"sample_name": sample_name, "item_type": "sample"}, Qt.UserRole
@@ -132,7 +131,7 @@ class SampleTreeWidget(QtWidgets.QTreeView):
                         collection_data.rasters[standard_uid].items()
                     ):
                         raster_item = QtGui.QStandardItem(
-                            f"{'Orthogonal' if raster_index==1 else 'Face On'} Raster"
+                            f"{'Orthogonal' if raster_index==0 else 'Face On'} Raster"
                         )
                         standard_item.appendRow(raster_item)
                         raster_item.setData(

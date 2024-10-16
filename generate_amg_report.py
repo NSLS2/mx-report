@@ -2,15 +2,25 @@ import argparse
 from pathlib import Path
 import pickle
 import json
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import utils
 from tqdm import tqdm
 from jinja2 import Environment, FileSystemLoader
 import multiprocessing
 import time
 import os
-from utils.models import CollectionData, SampleData, StandardResult
-
+from utils.models import (
+    CollectionData,
+    AutomatedCollection,
+    CollectionType,
+    ManualCollection,
+    StandardResult,
+    SampleName,
+    PuckName,
+    Request,
+    RequestType,
+)
+import numpy as np
 SAMPLES_PER_PAGE = 10
 
 
@@ -79,7 +89,7 @@ def generate_toc_data(puck_data: dict[str, list[str]]):
 def generate_report_pages(
     json_data, samples, report_directory, report_output_directory, toc_data
 ):
-    full_data = json_data.samples
+    full_data = json_data.sample_collections
     # total_pages = len(samples) // SAMPLES_PER_PAGE
     total_pages = len(json_data.puck_data)
     # if len(samples) % SAMPLES_PER_PAGE:
@@ -88,7 +98,6 @@ def generate_report_pages(
     beamline = next(
         iter(next(iter(full_data.values())).standard.values())
     ).request_def.beamline.upper()
-    print(json_data.puck_data)
 
     proposal = next(iter(full_data.values())).sample.proposal_id
     subtitle = f"Proposal: {proposal}  Beamline: {beamline}"
@@ -190,105 +199,117 @@ def generate_report_pages(
         generate_html(context, output_dir=report_output_directory)
 
 
-def process_single_sample(
-    full_data: Dict[str, SampleData], sample, collection_data_path, toc_data
+def generate_standard_collection_report_data(
+    standard_collection: Request, sample: str, toc_data
 ):
-    sample_data: SampleData = full_data[sample]
-    for standard_id, standard_collection in sample_data.standard.items():
-        fast_dp_row = utils.get_standard_fastdp_summary(
-            standard_collection.request_def.directory
+    fast_dp_row = utils.get_standard_fastdp_summary(
+        standard_collection.request_def.directory
+    )
+    if fast_dp_row is None:
+        diffraction_images = None
+        fast_dp_row = (sample,) + ("-",) * 19
+    else:
+        diffraction_images = utils.create_grid_matplotlib_image(
+            utils.get_standard_images(
+                standard_collection.request_def.file_prefix,
+                standard_collection.request_def.directory,
+            )
         )
-        if fast_dp_row is None:
-            diffraction_images = None
-            fast_dp_row = (sample,) + ("-",) * 19
+    fast_dp_row = list(fast_dp_row)
+    fast_dp_row[0] = (
+        f'<a href="{toc_data.get(sample, {"href": "#"})["href"]}">{fast_dp_row[0]}</a>'
+    )
+    auto_proc_row = utils.get_standard_autoproc_summary(
+        standard_collection.request_def.directory
+    )
+    auto_proc_row = auto_proc_row if auto_proc_row else (sample,) + ("-",) * 19
+    auto_proc_row = list(auto_proc_row)
+    auto_proc_row[0] = (
+        f'<a href="{toc_data.get(sample, {"href": "#"})["href"].split("/")[-1]}">{auto_proc_row[0]}</a>'
+    )
+    result = StandardResult(
+        diffraction_images=diffraction_images,
+        fast_dp_row=fast_dp_row,
+        auto_proc_row=auto_proc_row,
+    )
+
+    standard_collection.result = result
+    return standard_collection
+
+def generate_raster_report_data(raster_req: Request, collection_data_path:Path):
+    
+    jpeg_path = utils.get_jpeg_path(raster_req, collection_data_path)
+    raster_heatmap_data = utils.get_raster_spot_count(raster_req)
+    i, j = None, None
+    if raster_req.request_def.max_raster:
+        if max_index := raster_req.request_def.max_raster.index is not None:
+            i, j = utils.calculate_matrix_index(
+                max_index,
+                *utils.determine_raster_shape(raster_req.request_def.raster_def),
+            )
         else:
-            diffraction_images = utils.create_grid_matplotlib_image(
-                utils.get_standard_images(
-                    standard_collection.request_def.file_prefix,
-                    standard_collection.request_def.directory,
-                )
+            i, j = None, None    
+    heatmap_image = utils.create_matplotlib_image(raster_heatmap_data, i, j)
+    lsdc_image = utils.encode_image_to_base64(jpeg_path)
+
+    if raster_req.result:
+        raster_req.result.plot_image = heatmap_image
+        raster_req.result.jpeg_image = lsdc_image
+
+    # raster_req.update({"spot_reso_table": utils.process_rasters(raster_req["request_obj"]["directory"])})
+    reso_table = utils.process_rasters(raster_req.request_def.directory)
+    top_frames = list(reso_table["frame"][:3].to_numpy())
+    top_frames_image = utils.get_spot_positions(
+        raster_req, top_frames, reso_table
+    )
+    if top_frames_image is not None and raster_req.result is not None:
+        raster_req.result.top_frames = top_frames_image
+        raster_req.result.hist_mean_neighbor_dist = (
+            utils.create_histogram_image(
+                reso_table,
+                ["mean_neighbor_dist"],
+                "Distance ($\AA$)",
+                "No. of raster grid cells",
+                "All raster cells 2-nearest neighbor",
             )
-        fast_dp_row = list(fast_dp_row)
-        fast_dp_row[0] = (
-            f'<a href="{toc_data.get(sample, {"href": "#"})["href"]}">{fast_dp_row[0]}</a>'
         )
-        auto_proc_row = utils.get_standard_autoproc_summary(
-            standard_collection.request_def.directory
+        raster_req.result.hist_resolutions = utils.create_histogram_image(
+            reso_table,
+            ["max_resolution", "median_resolution"],
+            "Distance ($\AA$)",
+            "No. of raster grid cells",
+            "All raster cells med/max res.",
+            ["blue", "green"],
         )
-        auto_proc_row = auto_proc_row if auto_proc_row else (sample,) + ("-",) * 19
-        auto_proc_row = list(auto_proc_row)
-        auto_proc_row[0] = (
-            f'<a href="{toc_data.get(sample, {"href": "#"})["href"].split("/")[-1]}">{auto_proc_row[0]}</a>'
+        raster_req.result.hist_spot_count = utils.create_histogram_image(
+            reso_table,
+            ["spot_count"],
+            "Number of spots",
+            "No. of raster grid cells",
+            "All raster cells spot count",
+            "orange",
         )
-        result = StandardResult(
-            diffraction_images=diffraction_images,
-            fast_dp_row=fast_dp_row,
-            auto_proc_row=auto_proc_row,
-        )
+    return raster_req
 
-        import pymongo
+def process_single_collection(
+    full_data: Dict[SampleName, CollectionType],
+    sample: SampleName,
+    collection_data_path,
+    toc_data,
+):
+    sample_data: CollectionType = full_data[sample]
+    if isinstance(sample_data, AutomatedCollection):
+        for standard_id, standard_collection in sample_data.standard.items():
+            generate_standard_collection_report_data(standard_collection, sample, toc_data)
+            for raster_id, raster_req in sample_data.rasters[standard_id].items():
+                generate_raster_report_data(raster_req, collection_data_path)
 
-        client = pymongo.MongoClient(os.environ["MONGODB"])
-        standard_result = client.analysisstore.analysis_header.find_one(
-            {"request": str(standard_collection.uid)}
-        )
-
-        standard_collection.result = result
-        if standard_result:
-            standard_collection.result.time = standard_result["time"]
-        # standard_collection["time"] = utils.convert_epoch_to_datetime(
-        #    standard_collection["time"]
-        # )
-
-        for raster_id, raster_req in sample_data.rasters[standard_id].items():
-            jpeg_path = utils.get_jpeg_path(raster_req, collection_data_path)
-            raster_heatmap_data = utils.get_raster_spot_count(raster_req)
-            i, j = None, None
-            if max_index := raster_req.request_def.max_raster.index is not None:
-                i, j = utils.calculate_matrix_index(
-                    max_index,
-                    *utils.determine_raster_shape(raster_req.request_def.raster_def),
-                )
-            heatmap_image = utils.create_matplotlib_image(raster_heatmap_data, i, j)
-            lsdc_image = utils.encode_image_to_base64(jpeg_path)
-
-            if raster_req.result:
-                raster_req.result.plot_image = heatmap_image
-                raster_req.result.jpeg_image = lsdc_image
-
-            # raster_req.update({"spot_reso_table": utils.process_rasters(raster_req["request_obj"]["directory"])})
-            reso_table = utils.process_rasters(raster_req.request_def.directory)
-            top_frames = list(reso_table["frame"][:3].to_numpy())
-            top_frames_image = utils.get_spot_positions(
-                raster_req, top_frames, reso_table
-            )
-            if top_frames_image is not None and raster_req.result is not None:
-                raster_req.result.top_frames = top_frames_image
-                raster_req.result.hist_mean_neighbor_dist = (
-                    utils.create_histogram_image(
-                        reso_table,
-                        ["mean_neighbor_dist"],
-                        "Distance ($\AA$)",
-                        "No. of raster grid cells",
-                        "All raster cells 2-nearest neighbor",
-                    )
-                )
-                raster_req.result.hist_resolutions = utils.create_histogram_image(
-                    reso_table,
-                    ["max_resolution", "median_resolution"],
-                    "Distance ($\AA$)",
-                    "No. of raster grid cells",
-                    "All raster cells med/max res.",
-                    ["blue", "green"],
-                )
-                raster_req.result.hist_spot_count = utils.create_histogram_image(
-                    reso_table,
-                    ["spot_count"],
-                    "Number of spots",
-                    "No. of raster grid cells",
-                    "All raster cells spot count",
-                    "orange",
-                )
+    elif isinstance(sample_data, ManualCollection):
+        for standard_collection in sample_data.standards.values():
+            generate_standard_collection_report_data(standard_collection, sample, toc_data)
+        for raster_req in sample_data.rasters.values():
+            generate_raster_report_data(raster_req, collection_data_path)
+    
     full_data[sample] = sample_data
     # with lock:
     #    completed.value += 1
@@ -299,18 +320,23 @@ def generate_report(
     report_output_directory: Path,
     report_data_directory: Path,
     data_dictionary: Optional[dict],
-    json_data: Optional[CollectionData | dict[str, SampleData] | dict[str, Any]],
+    json_data: Optional[
+        CollectionData | dict[str, AutomatedCollection] | dict[str, Any]
+    ],
     database_json_file: Path,
     data_pickle_file: Path,
     collection_data_path: Path,
     report_directory: Path,
+    collection_type="automated",
 ):
     full_data = data_dictionary
     if full_data is None:
         print("Full data not found")
         if json_data is None:
             print("json data not found")
-            utils.save_collection_data_to_disk(database_json_file, collection_data_path)
+            utils.save_collection_data_to_disk(
+                database_json_file, collection_data_path, collection_type
+            )
             json_data = utils.load_collection_data_from_disk(database_json_file)
         # full_data = json_data
     if isinstance(json_data, dict):
@@ -318,11 +344,10 @@ def generate_report(
 
     if full_data:
         json_data = full_data
-        full_data = json_data.samples
+        full_data = json_data.sample_collections
 
     # json_data = json_data.samples
-    print(type(json_data.samples))
-    samples = [k for k, v in json_data.samples.items()]
+    samples = [k for k, v in json_data.sample_collections.items()]
     # samples = samples[:11]
     toc_data = generate_toc_data(json_data.puck_data)
 
@@ -330,7 +355,7 @@ def generate_report(
 
     start_time = time.time()
     if full_data is None and json_data is not None:
-        full_data = json_data.samples
+        full_data = json_data.sample_collections
 
         with multiprocessing.Manager() as manager:
             # Initialize the shared dictionary with the existing dictionary
@@ -342,7 +367,7 @@ def generate_report(
             with multiprocessing.Pool(processes=num_processes) as pool:
                 # with tqdm(total=len(samples)) as pbar:
                 pool.starmap(
-                    process_single_sample,
+                    process_single_collection,
                     [
                         (full_data, sample, collection_data_path, toc_data)
                         for sample in samples
@@ -352,7 +377,7 @@ def generate_report(
 
             # Convert shared dictionary to a regular dictionary
             full_data = dict(full_data)  # Convert to a standard Python dict
-        json_data.samples = full_data
+        json_data.sample_collections = full_data
 
     end_time = time.time()
     elapsed_time = end_time - start_time

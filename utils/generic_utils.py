@@ -1,4 +1,5 @@
 # import ipywidgets as widgets
+import time
 import pymongo
 from pathlib import Path
 from collections import defaultdict
@@ -20,52 +21,38 @@ import tqdm
 import os
 from amostra.client import commands as amostra_client
 from analysisstore.client import commands as analysis_client
-from utils.models import Sample, Request, SampleData, CollectionData, RasterResult
+from utils.models import (
+    Sample,
+    Request,
+    AutomatedCollection,
+    CollectionData,
+    RasterResult,
+    RequestType,
+    CollectionType,
+    ManualCollection,
+    StandardRequestDefinition,
+    SampleName,
+    PuckName,
+    Result,
+)
+from typing import Generator, Dict, List, Any, Optional, Tuple
+from uuid import UUID
+import matplotlib.colors as mcolors
 
 matplotlib.use("Agg")
 
 
-# diff_img = f['/entry/data/data_000001'][50,:1700,1500:]
-"""
-def process_hdf_image(diff_img):
-    # flatten saturated pixels (for better contrast enhancement)
-    diff_img[diff_img == 65535] = 0
-
-    # convert to 8bit gray scale for display
-    diff_img_normalized = (diff_img - np.min(diff_img)) / (np.max(diff_img) - np.min(diff_img))
-    diff_img_255 = (diff_img_normalized * 255).astype(np.uint8)
-
-    # 2x downsample and contrast enhance
-    diff_img_255_he = cv2.equalizeHist(cv2.pyrDown(cv2.pyrDown(diff_img_255)))
-"""
-
-
-def create_matplotlib_image(data, max_index_x=None, max_index_y=None):
+def create_matplotlib_image(
+    data: np.ndarray,
+    max_index_x: Optional[int] = None,
+    max_index_y: Optional[int] = None,
+) -> str:
     # create_snake_arraye a Matplotlib plot
     plt.figure(figsize=(6, 4))
     fig, ax = plt.subplots()
     plt.imshow(data, cmap="inferno", interpolation="nearest")
-    """
-    if max_index_x is not None and max_index_y is not None:
-        rect = Rectangle((max_index_x - 0.5, max_index_y - 0.5), 1, 1, 
-                         linewidth=2, edgecolor='green', facecolor='none',
-                         label='Cell selected for standard collection')
-        ax.add_patch(rect)
-        plt.legend(handles=[rect], loc='upper right')
-    """
     plt.colorbar()
 
-    """
-    for row in range(data.shape[0]):
-        for col in range(data.shape[1]):
-            if data[row, col] > 0:
-                ax.text(col,row,
-                        calculate_flattened_index(row, col, data.shape[0], data.shape[1], "horizontal" if data.shape[1] > data.shape[0] else "vertical") + 1,
-                        ha='center',
-                        va="center",
-                        color="white"
-                        )
-    """
     # Save the image to a bytes buffer
     buffer = io.BytesIO()
     plt.savefig(buffer, format="png")
@@ -75,10 +62,18 @@ def create_matplotlib_image(data, max_index_x=None, max_index_y=None):
     image_base64 = base64.b64encode(buffer.read()).decode("utf-8")
     plt.close("all")
     buffer.close()
+
     return image_base64
 
 
-def create_histogram_image(df, columns, xlabel="", ylabel="", title="", color="red"):
+def create_histogram_image(
+    df: pd.DataFrame,
+    columns: List[str],
+    xlabel: str = "",
+    ylabel: str = "",
+    title: str = "",
+    color: str = "red",
+) -> str:
     values = [df[column].to_numpy() for column in columns]
     plt.figure(figsize=(6, 4))
     plt.hist(values, bins=20, label=columns, histtype="stepfilled", color=color)
@@ -101,7 +96,7 @@ def create_histogram_image(df, columns, xlabel="", ylabel="", title="", color="r
     return image_base64
 
 
-def create_grid_matplotlib_image(data):
+def create_grid_matplotlib_image(data: list[np.ndarray]) -> str:
     import matplotlib.pyplot as plt
     import io
     import base64
@@ -111,8 +106,13 @@ def create_grid_matplotlib_image(data):
 
     # Display each image in the grid
     for i in range(len(data)):
-        axs[i].imshow(data[i], cmap="gray")
-        axs[i].axis("off")  # Hide the axes
+        axs[i].imshow(data[i], norm=mcolors.LogNorm())
+        # axs[i].axis("off")  # Hide the axes
+        axs[i].set_xticks([])
+        axs[i].set_yticks([])
+        for spine in axs[i].spines.values():
+            spine.set_edgecolor("black")  # Set the color of the border
+            spine.set_linewidth(2)
 
     plt.tight_layout()
     # Save the image to a bytes buffer
@@ -127,7 +127,7 @@ def create_grid_matplotlib_image(data):
     return image_base64
 
 
-def get_standard_master_file(file_prefix, directory):
+def get_standard_master_file(file_prefix: str, directory: Path) -> Optional[Path]:
     h5_path = Path(directory)
     master_file = None
     if not h5_path.exists():
@@ -139,7 +139,7 @@ def get_standard_master_file(file_prefix, directory):
     return master_file
 
 
-def get_standard_images(file_prefix, directory):
+def get_standard_images(file_prefix: str, directory: Path) -> list[np.ndarray]:
     standard_images = []
     master_file = get_standard_master_file(file_prefix, directory)
     if master_file is not None:
@@ -173,21 +173,20 @@ def get_standard_images(file_prefix, directory):
                 diff_img_255_he = cv2.equalizeHist(
                     cv2.pyrDown(cv2.pyrDown(diff_img_255))
                 )
-
                 # Append the processed image to the list
                 standard_images.append(diff_img_255_he)
             # print(f"Standard image len: {len(standard_images)}")
     return standard_images
 
 
-def get_standard_fastdp_summary(directory):
+def get_standard_fastdp_summary(directory: Path) -> Optional[Any]:
     fastdp_file_path = Path(directory) / Path("fastDPOutput/fast_dp.xml")
     if fastdp_file_path.exists():
         return parse_fdp_xml(str(fastdp_file_path))
     return None
 
 
-def get_standard_autoproc_summary(directory):
+def get_standard_autoproc_summary(directory: Path) -> Optional[Any]:
     autoproc_file_path = Path(directory) / Path("autoProcOutput/autoPROC.xml")
     autoproc_file_path1 = Path(directory) / Path("autoProcOutput1/autoPROC.xml")
     if autoproc_file_path.exists():
@@ -197,7 +196,7 @@ def get_standard_autoproc_summary(directory):
     return None
 
 
-def encode_image_to_base64(image_path: Path):
+def encode_image_to_base64(image_path: Path) -> str:
     try:
         if image_path is None or not image_path.exists():
             raise ValueError("Invalid image path")
@@ -241,13 +240,8 @@ analysis_store_client = analysis_client.AnalysisClient(
 )
 
 
-def get_auto_collections(base_path):
+def get_auto_collections(base_path: Path) -> Tuple[List[Request], Dict[str, Any]]:
     path_to_remove = Path("/nsls2/data4")
-    # regex_queries = [
-    #    {"request_obj.directory": {"$regex": f"{path.relative_to(path_to_remove)}"}}
-    #    for path in base_path.iterdir()
-    #    if not path.stem.endswith("_dir")
-    # ]
     auto_collections = request_collection.find(
         **{
             "request_obj.directory": {
@@ -256,69 +250,205 @@ def get_auto_collections(base_path):
             "request_obj.centeringOption": "AutoRaster",
         }
     )
-    return auto_collections
+    auto_collections = [
+        Request(**auto_collection) for auto_collection in auto_collections
+    ]
+    completed_standard_collections = analysis_store_client.find_analysis_header(
+        **{"request": {"$in": [str(collection.uid) for collection in auto_collections]}}
+    )
+    completed_standard_collections = {
+        collection_res["request"]: collection_res
+        for collection_res in completed_standard_collections
+    }
+    return auto_collections, completed_standard_collections
 
 
-def get_sample_data_and_rasters(auto_collections):
+def get_manual_collections(base_path: Path) -> Tuple[List[Request], Dict[str, Any]]:
+    path_to_remove = Path("/nsls2/data4")
+    manual_collections = request_collection.find(
+        **{
+            "request_obj.directory": {
+                "$regex": f"{base_path.relative_to(path_to_remove)}"
+            },
+            "request_obj.centeringOption": "Interactive",
+        }
+    )
+    # Manual collections include rasters, standards and vectors
+    manual_collections = [
+        Request(**manual_collection) for manual_collection in manual_collections
+    ]
+    # Get the collection results so that incomplete ones can be discarded
+    completed_collections = analysis_store_client.find_analysis_header(
+        **{
+            "request": {
+                "$in": [str(collection.uid) for collection in manual_collections]
+            }
+        }
+    )
+    collection_results = {
+        collection_res["request"]: collection_res
+        for collection_res in completed_collections
+    }
+    # Since these results also contain rasters we might as well parse it
+    for collection in manual_collections:
+        if str(collection.uid) in collection_results:
+            if collection.request_type == RequestType.raster:
+                collection.result = RasterResult(
+                    **collection_results[str(collection.uid)]
+                )
+    return manual_collections, collection_results
+
+
+def get_sample_data(sample_ids: set[str]) -> dict[SampleName, Sample]:
+    sample_data: dict[SampleName, Sample] = {}
+    sample_results = sample_collection.find(
+        as_document=False, uid={"$in": list(sample_ids)}
+    )
+    for sample_result in sample_results:
+        sample_result.pop("_id", None)
+        sample = Sample(**sample_result)
+        sample_data[sample.name] = sample
+    return sample_data
+
+
+def get_puck_data(
+    sample_data: dict[SampleName, Sample]
+) -> dict[PuckName, List[SampleName]]:
+    puck_data = {}
+    puck_ids = set()
+    puck_id_data = defaultdict(list)
+    for sample_name, sample in sample_data.items():
+        puck_id_data[str(sample.container)].append(sample.name)
+    print(f"Number of pucks: {len(puck_id_data)} from {len(sample_data)} samples")
+
+    puck_results = container_collection.find(
+        as_document=False, uid={"$in": list(puck_id_data.keys())}
+    )
+    for puck_result in puck_results:
+        puck_data[puck_result["name"]] = reversed(
+            list(puck_id_data[puck_result["uid"]])
+        )
+
+    print(f"Number of pucks found in DB: {len(puck_data)}")
+    # Reversed because original order is reversed
+    puck_data = dict(reversed(list(puck_data.items())))
+
+    return puck_data
+
+
+def process_manual_collections(
+    manual_collections: List[Request], manual_collection_results: Dict[str, Any]
+) -> CollectionData:
+    """
+    Processes the manual collection data received from amostra and validates
+    it into a CollectionData pydantic model
+    """
+    all_data = {"sample_collections": {}, "puck_data": {}}
+    sample_ids = set()
+    puck_ids = set()
+    puck_data: dict[PuckName, List[SampleName]] = defaultdict(list)
+    requests: Dict[UUID, List[Request]] = defaultdict(list)
+    for request in manual_collections:
+        requests[request.sample].append(request)
+        sample_ids.add(str(request.sample))
+
+    sample_data = get_sample_data(sample_ids)
+    puck_data = get_puck_data(sample_data)
+
+    sample_collections: Dict[SampleName, CollectionType] = {}
+
+    for sample in sample_data.values():
+        rasters: dict[UUID, Request] = {}
+        standards: dict[UUID, Request] = {}
+        vectors: dict[UUID, Request] = {}
+        for request in requests[sample.uid]:
+            if request.request_type == RequestType.raster:
+                rasters[request.uid] = request
+            elif request.request_type == RequestType.standard:
+                standards[request.uid] = request
+            elif request.request_type == RequestType.vector:
+                vectors[request.uid] = request
+
+        manual_collection = ManualCollection(
+            sample=sample, rasters=rasters, standards=standards, vectors=vectors
+        )
+        sample_collections[sample.name] = manual_collection
+    collection_data = CollectionData(
+        sample_collections=sample_collections, puck_data=puck_data
+    )
+    return collection_data
+
+
+def get_autoraster_data(
+    standard_ids: set[str],
+) -> Tuple[Dict[UUID, Dict[UUID, Request]], List[str]]:
+    """
+    Returns raster requests and results given standard collection UUIDs (as strings)
+    Also returns a list of raster request uids (also as strings)
+    """
+    raster_data = request_collection.find(
+        as_document=False,
+        **{"request_obj.parentReqID": {"$in": list(standard_ids)}},
+    )
+    raster_requests: Dict[UUID, Dict[UUID, Request]] = defaultdict(dict)
+    raster_req_uids = set()
+    for raster in raster_data:
+        raster.pop("_id", None)
+        raster_request = Request(**raster)
+        raster_requests[raster_request.request_def.parent_request_id][
+            raster_request.uid
+        ] = raster_request
+        raster_req_uids.add(str(raster_request.uid))
+
+    raster_result_data = get_raster_results(list(raster_req_uids))
+    for raster_req_set in raster_requests.values():
+        for raster_request in raster_req_set.values():
+            raster_request.result = raster_result_data.get(raster_request.uid, None)
+
+    return raster_requests, list(raster_req_uids)
+
+
+def process_automated_collections(
+    auto_collections: List[Request], auto_collection_results: Dict[str, Any]
+) -> CollectionData:
     print("getting sample data and rasters")
     # all_data = defaultdict(dict)
-    all_data = {"samples": {}}
-    samples = []
+    all_data = {"sample_collections": {}}
+    sample_ids = set()
     puck_ids = set()
-    for standard_collection in tqdm.tqdm(auto_collections):
-        sample = dict(
-            next(sample_collection.find(**{"uid": standard_collection["sample"]}))
+    requests: Dict[UUID, List[Request]] = defaultdict(list)
+    standard_ids = set()
+
+    for standard_request in auto_collections:
+        if str(standard_request.uid) in auto_collection_results:
+            requests[standard_request.sample].append(standard_request)
+            sample_ids.add(str(standard_request.sample))
+            standard_ids.add(str(standard_request.uid))
+
+    print("Getting sample, puck and raster results from database...")
+    start_time = time.time()
+    sample_data = get_sample_data(sample_ids)
+    puck_data = get_puck_data(sample_data)
+    raster_data, raster_req_uids = get_autoraster_data(standard_ids)
+    elapsed_time = time.time() - start_time
+    print(f"Finished fetching database data. Time elapsed: {elapsed_time} seconds")
+    sample_collections: dict[SampleName, CollectionType] = {}
+    for sample in sample_data.values():
+        std_collections: Dict[UUID, Request] = {}
+        raster_collections: Dict[UUID, Dict[UUID, Request]] = {}
+        for standard_request in requests[sample.uid]:
+            raster_collections[standard_request.uid] = raster_data[standard_request.uid]
+            std_collections[standard_request.uid] = standard_request
+
+        auto_collection = AutomatedCollection(
+            sample=sample, rasters=raster_collections, standard=std_collections
         )
-        standard_collection = dict(standard_collection)
-        standard_collection.pop("_id", None)
-        sample.pop("_id", None)
+        sample_collections[sample.name] = auto_collection
 
-        sample = Sample(**sample)
-        # sample_ids[str(sample.uid)] = sample.name
-        samples.append(sample)
-        puck_ids.add(str(sample.container))
-        try:
-            standard_collection = Request(**standard_collection)
-        except Exception as e:
-            print(standard_collection)
-        rasters = list(
-            request_collection.find(
-                **{"request_obj.parentReqID": str(standard_collection.uid)}
-            )
-        )
-        all_data["samples"][sample.name] = {}
-        all_data["samples"][sample.name]["sample"] = sample
-        all_data["samples"][sample.name]["rasters"] = {
-            standard_collection.uid: {}
-        }  # defaultdict(dict)
-        all_data["samples"][sample.name]["standard"] = {}
-        for raster in rasters:
-            raster = dict(raster)
-            raster.pop("_id", None)
-            try:
-                raster = Request(**raster)
-            except Exception as e:
-                print(e)
-                print(raster)
-            all_data["samples"][sample.name]["rasters"][standard_collection.uid][
-                raster.uid
-            ] = raster
-
-        all_data["samples"][sample.name]["standard"][standard_collection.uid] = (
-            standard_collection
-        )
-
-    puck_data = container_collection.find(uid={"$in": list(puck_ids)})
-    puck_contents = {}
-    for pdata in puck_data:
-        print(pdata["name"], pdata["uid"])
-        puck_contents[pdata["name"]] = [
-            sample.name for sample in samples if str(sample.container) == pdata["uid"]
-        ]
-    all_data["puck_data"] = puck_contents
-
-    all_data = CollectionData(**all_data)
-    return all_data
+    collection_data = CollectionData(
+        sample_collections=dict(sample_collections), puck_data=puck_data
+    )
+    return collection_data
 
 
 def create_snake_array(flattened, M, N, raster_type):
@@ -347,7 +477,8 @@ def determine_raster_shape(raster_def):
     """
     if (
         # raster_def["rowDefs"][0]["start"]["y"] == raster_def["rowDefs"][0]["end"]["y"]
-        raster_def.row_defs[0].start.y == raster_def.row_defs[0].end.y
+        raster_def.row_defs[0].start.y
+        == raster_def.row_defs[0].end.y
     ):  # this is a horizontal raster
         raster_dir = "horizontal"
     else:
@@ -361,7 +492,21 @@ def determine_raster_shape(raster_def):
     return num_rows, num_cols, raster_dir
 
 
+def get_raster_results(request_uids: List[str]) -> Dict[UUID, RasterResult]:
+    client = pymongo.MongoClient(os.environ["MONGODB"])
+    raster_result_data = client.analysisstore.analysis_header.find(
+        {"request": {"$in": request_uids}, "result_type": "rasterResult"}
+    )
+    raster_results = {}
+    for raster_data in raster_result_data:
+        raster_result = RasterResult(**raster_data)
+        raster_results[raster_result.request] = raster_result
+
+    return raster_results
+
+
 def get_raster_spot_count(req, include_files=False):
+    """
     client = pymongo.MongoClient(os.environ["MONGODB"])
     res_obj = client.analysisstore.analysis_header.find_one(
         {"request": str(req.uid), "result_type": "rasterResult"}
@@ -371,16 +516,18 @@ def get_raster_spot_count(req, include_files=False):
 
     raster_result = RasterResult(**res_obj)
     req.result = raster_result
+    """
+    raster_result = req.result
     # res_obj = res_obj["result_obj"]["rasterCellResults"]["resultObj"]
-    cells = raster_result.data.cell_data_collection.cells
-    spot_counts = []
-    file_locations = []
-    for cell in cells:
-        spot_counts.append(cell.spot_count)
-        if include_files:
-            file_locations.append(cell.image)
 
     try:
+        cells = raster_result.data.cell_data_collection.cells
+        spot_counts = []
+        file_locations = []
+        for cell in cells:
+            spot_counts.append(cell.spot_count)
+            if include_files:
+                file_locations.append(cell.image)
         snake_array = create_snake_array(
             spot_counts, *determine_raster_shape(req.request_def.raster_def)
         )
@@ -558,9 +705,13 @@ def get_jpeg_path(raster_req, base_path):
     return jpg_file
 
 
-def save_collection_data_to_disk(json_path, data_path):
+def save_collection_data_to_disk(json_path, data_path, collection_type):
     # if not Path(json_path).exists():
-    all_data = get_sample_data_and_rasters(get_auto_collections(data_path))
+    if collection_type == "automated":
+        all_data = process_automated_collections(*get_auto_collections(data_path))
+    elif collection_type == "manual":
+        all_data = process_manual_collections(*get_manual_collections(data_path))
+    print("Writing data to disk")
     with open(json_path, "w") as f:
         # json.dump(all_data.json(), f, indent=4)
         f.write(all_data.model_dump_json(indent=4, by_alias=True))
@@ -570,6 +721,8 @@ def load_collection_data_from_disk(json_path) -> CollectionData:
     with open(json_path, "r") as f:
         full_data = json.load(f)
         full_data = CollectionData.model_validate(full_data)
+        for sample in full_data.sample_collections.values():
+            pass
     return full_data
 
 

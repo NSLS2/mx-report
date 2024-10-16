@@ -1,14 +1,17 @@
 from pydantic import BaseModel, field_validator, Field, model_validator
 from uuid import UUID
 from datetime import datetime
-from typing import Optional, Literal, Union, Dict, Any, List, Tuple
+from typing import Optional, Literal, Union, Dict, Any, List, Tuple, NewType
 from enum import Enum
 from pathlib import Path
 
+PuckName = NewType("PuckName", str)
+SampleName = NewType("SampleName", str)
 
 class RequestType(str, Enum):
     standard = "standard"
     raster = "raster"
+    vector = "vector"
 
 
 class BaseRequestDefinition(BaseModel):
@@ -58,7 +61,20 @@ class BaseRequestDefinition(BaseModel):
 
 
 class StandardRequestDefinition(BaseRequestDefinition):
-    centering_option: Literal["AutoRaster", "Manual"] = Field(
+    protocol: Literal[RequestType.standard] = RequestType.standard
+    centering_option: Literal["AutoRaster", "Interactive"] = Field(
+        ..., alias="centeringOption"
+    )
+    fast_dp: bool = Field(..., alias="fastDP")
+    fast_ep: bool = Field(..., alias="fastEP")
+    dimple: bool
+    xia2: bool
+    model_config = {"frozen": False}
+
+
+class VectorRequestDefinition(BaseRequestDefinition):
+    protocol: Literal[RequestType.vector] = RequestType.vector
+    centering_option: Literal["AutoRaster", "Interactive"] = Field(
         ..., alias="centeringOption"
     )
     fast_dp: bool = Field(..., alias="fastDP")
@@ -78,6 +94,14 @@ class Point3D(BaseModel):
     x: float
     y: float
     z: float
+    model_config = {"frozen": False}
+
+
+class VectorDefinition(BaseModel):
+    start: Point3D = Field(..., alias="vecStart")
+    end: Point3D = Field(..., alias="vecEnd")
+    length: float = Field(..., alias="trans_total")
+    frames_per_point: int = Field(..., alias="fpp")
     model_config = {"frozen": False}
 
 
@@ -112,12 +136,15 @@ class MaxRasterPosition(BaseModel):
 
 
 class RasterRequestDefinition(BaseRequestDefinition):
+    protocol: Literal[RequestType.raster] = RequestType.raster
     raster_def: RasterDefinition = Field(..., alias="rasterDef")
-    max_raster: MaxRasterPosition
+    max_raster: Optional[MaxRasterPosition] = None
     model_config = {"frozen": False}
 
 
-RequestDefinition = Union[StandardRequestDefinition, RasterRequestDefinition]
+RequestDefinition = Union[
+    StandardRequestDefinition, RasterRequestDefinition, VectorRequestDefinition
+]
 
 
 class StandardResult(BaseModel):
@@ -137,7 +164,7 @@ class StandardResult(BaseModel):
 
 
 class RasterCellData(BaseModel):
-    image: Tuple[str, int]
+    image: Tuple[Path, int]
     spot_count: float
     spot_count_no_ice: float
     d_min: float
@@ -163,7 +190,7 @@ class RasterCellCollection(BaseModel):
 
 class RasterResultData(BaseModel):
     sample_id: UUID
-    parent_request_id: UUID = Field(..., alias="parentReqID")
+    parent_request_id: UUID | Literal[-1] = Field(..., alias="parentReqID")
     cell_map: Dict[str, Point3D] = Field(..., alias="rasterCellMap")
     cell_data_collection: RasterCellCollection = Field(..., alias="rasterCellResults")
     model_config = {"frozen": False}
@@ -217,16 +244,21 @@ class Request(BaseModel):
     model_config = {"frozen": False}
 
     @model_validator(mode="before")
-    def convert_epoch_to_datetime(cls, values: Any) -> Any:
-        # Access other fields using info.data
-        if values.get("request_time") is None and values.get("time") is not None:
-            values["request_time"] = datetime.fromtimestamp(values["time"])
+    def convert_epoch_to_datetime(cls, values: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(values, dict):
+            return values
+        # Access the fields from the values dictionary
+        try:
+            if values.get("request_time") is None and values.get("time") is not None:
+                values["request_time"] = datetime.fromtimestamp(values["time"])
+        except Exception as e:
+            print(f"Error converting epoch to datetime: {e} {type(cls)}")
         return values
 
 
 class Sample(BaseModel):
     uid: UUID
-    name: str
+    name: SampleName
     time: float
     create_time: Optional[datetime] = None
     container: UUID
@@ -239,14 +271,25 @@ class Sample(BaseModel):
     model_config = {"frozen": False}
 
 
-class SampleData(BaseModel):
+class AutomatedCollection(BaseModel):
     sample: Sample
     rasters: Dict[UUID, Dict[UUID, Request]]
     standard: Dict[UUID, Request]
     model_config = {"frozen": False}
 
 
+class ManualCollection(BaseModel):
+    sample: Sample
+    rasters: Dict[UUID, Request]
+    standards: Dict[UUID, Request]
+    vectors: Dict[UUID, Request]
+    model_config = {"frozen": False}
+
+
+CollectionType = AutomatedCollection | ManualCollection
+
+
 class CollectionData(BaseModel):
-    samples: Dict[str, SampleData]
-    puck_data: Dict[str, List[str]]
+    sample_collections: dict[SampleName, CollectionType]
+    puck_data: Dict[PuckName, List[SampleName]]
     model_config = {"frozen": False}

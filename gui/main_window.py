@@ -112,7 +112,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def populate_full_summary_table(self):
         for puck_name, sample_names in self.full_data.puck_data.items():
             for sample_name in sample_names:
-                data = self.full_data.samples[sample_name]
+                data = self.full_data.sample_collections[sample_name]
                 # for sample_name, data in self.full_data.samples.items():
                 for standard_uid, standard_req in data.standard.items():
                     # fast_dp_row = utils.get_standard_fastdp_summary(standard_req['request_obj']['directory'])
@@ -149,7 +149,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.canvas.setHidden(False)
             self.sample_cam_image.setHidden(False)
             self.summary_table.setHidden(True)
-            raster_req = self.full_data.samples[data["sample_name"]].rasters[
+            raster_req = self.full_data.sample_collections[data["sample_name"]].rasters[
                 data["standard_uid"]
             ][data["item_uid"]]
             self.data, self.image_files = utils.get_raster_spot_count(
@@ -181,7 +181,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.canvas.setHidden(True)
             self.sample_cam_image.setHidden(True)
             self.summary_table.setHidden(False)
-            standard_req = self.full_data.samples[data["sample_name"]].standard[
+            standard_req = self.full_data.sample_collections[data["sample_name"]].standard[
                 data["item_uid"]
             ]
             master_file_path = utils.get_standard_master_file(
