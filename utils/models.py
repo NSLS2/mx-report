@@ -146,7 +146,7 @@ RequestDefinition = Union[
     StandardRequestDefinition, RasterRequestDefinition, VectorRequestDefinition
 ]
 
-
+   
 class StandardResult(BaseModel):
     time: Optional[float] = None
     result_time: Optional[datetime] = None
@@ -162,6 +162,8 @@ class StandardResult(BaseModel):
             values["result_time"] = datetime.fromtimestamp(values["time"])
         return values
 
+class VectorResult(StandardResult):
+    pass
 
 class RasterCellData(BaseModel):
     image: Tuple[Path, int]
@@ -223,7 +225,7 @@ class RasterResult(BaseModel):
         return values
 
 
-Result = Union[StandardResult, RasterResult]
+Result = Union[StandardResult, RasterResult, VectorResult]
 # Result = RasterResult
 
 
@@ -293,3 +295,5 @@ class CollectionData(BaseModel):
     sample_collections: dict[SampleName, CollectionType]
     puck_data: Dict[PuckName, List[SampleName]]
     model_config = {"frozen": False}
+    beamline: Optional[str] = None
+    proposal: Optional[str] = None

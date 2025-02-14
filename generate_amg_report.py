@@ -29,6 +29,7 @@ def init_argparse() -> argparse.ArgumentParser:
         usage="%(prog)s [OPTION] ...", description="Start the amg report generator"
     )
     parser.add_argument(
+        "-r",
         "--regenerate",
         dest="regenerate",
         help="Regenerate the processed report data, useful when data was updated from the last time the report was generated",
@@ -36,10 +37,19 @@ def init_argparse() -> argparse.ArgumentParser:
         default=True,
     )
     parser.add_argument(
+        "-o",
         "--output-dir",
         dest="output_dir",
         help="Optionally specify the directory where you want to write the output files",
-        default="amg_report",
+        default=None,
+    )
+    parser.add_argument(
+        "-c",
+        "--collection-type",
+        dest="collection_type",
+        choices=["automated", "manual"],
+        help="Create report for specific types of collections. Available options: automated, manual",
+        default="automated",
     )
     return parser
 
@@ -90,16 +100,11 @@ def generate_report_pages(
     json_data, samples, report_directory, report_output_directory, toc_data
 ):
     full_data = json_data.sample_collections
-    # total_pages = len(samples) // SAMPLES_PER_PAGE
     total_pages = len(json_data.puck_data)
-    # if len(samples) % SAMPLES_PER_PAGE:
-    #    total_pages += 1
 
-    beamline = next(
-        iter(next(iter(full_data.values())).standard.values())
-    ).request_def.beamline.upper()
+    beamline = json_data.beamline
 
-    proposal = next(iter(full_data.values())).sample.proposal_id
+    proposal = json_data.proposal
     subtitle = f"Proposal: {proposal}  Beamline: {beamline}"
     context = {
         "title": "FastDP Report",
@@ -182,6 +187,7 @@ def generate_report_pages(
         # print(start_index, end_index)
         # print(full_data[samples[start_index]].result.)
         current_puck = list(json_data.puck_data.keys())[page_num]
+        print(current_puck, json_data.puck_data[current_puck])
         context.update(
             {
                 "title": f"Report for {current_puck}",
@@ -407,6 +413,12 @@ def main():
     args = parser.parse_args()
     current_directory = Path.cwd()
 
+    if args.output_dir is None:
+        if args.collection_type == "automated":
+            args.output_dir = "amg_report"
+        elif args.collection_type == "manual":
+            args.output_dir = "manual_report"
+
     report_directory = current_directory / Path(args.output_dir)
     report_directory.mkdir(exist_ok=True)
 
@@ -443,6 +455,7 @@ def main():
         data_pickle_file,
         current_directory,
         report_directory,
+        collection_type=args.collection_type,
     )
 
 

@@ -91,10 +91,17 @@
                     {% if summary_table or auto_proc_table %}
                     {% include 'summary_table_template.html' %}
                     {% else %}
-                    {% for sample_name, sample_data in full_data.items() %}
-                    <h2 id="sample-{{ sample_name }}">Sample {{ sample_name }}</h2>
-                    {% include 'sample_template.html' %}
-                    {% endfor %}
+                        {% if collection_type == 'automated' %}
+                            {% for sample_name, sample_data in full_data.items() %}
+                            <h2 id="sample-{{ sample_name }}">Sample {{ sample_name }}</h2>
+                            {% include 'sample_template.html' %}
+                            {% endfor %}
+                        {% else %}
+                            {% for sample_name, sample_data in full_data.items() %}
+                            <h2 id="sample-{{ sample_name }}">Sample {{ sample_name }}</h2>
+                            {% include 'manual_sample_template.html' %}
+                            {% endfor %}
+                        {% endif %}
                     {% endif %}
                 </div>
             </main>

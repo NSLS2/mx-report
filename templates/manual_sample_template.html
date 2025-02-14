@@ -1,0 +1,10 @@
+{% for standard_id, standard_data in sample_data['standards'].items() %}
+  {% include 'standard_template.html' %}
+{% endfor %}
+{% for raster_id, raster_data in sample_data['rasters'].items() %}
+  {% include 'raster_template.html' %}
+{% endfor %}
+{% for vector_id, vector_data in sample_data['vectors'].items() %}
+  {% include 'vector_template.html' %}
+{% endfor %}
+<hr class="my-4">

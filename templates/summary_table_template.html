@@ -19,20 +19,21 @@
         {% for puck_name, samples in puck_data.items() %}
         {% for sample_name in samples %}
         {% set outer_loop = loop %}
-        {% for standard_id, standard_data in full_data[sample_name]['standard'].items() %}
-        <tr>
-            <td> {{ puck_name if outer_loop.index == 1 }} </td>
-            {% if summary_table %}
-            {% for data in standard_data.result.fast_dp_row %}
-            <td>{{ data }}</td>
+        {% set standard_collections = full_data[sample_name]['standard'].items() if 'standard' in full_data[sample_name] else full_data[sample_name]['standards'].items() %}
+            {% for standard_id, standard_data in standard_collections %}
+                <tr>
+                    <td> {{ puck_name if outer_loop.index == 1 }} </td>
+                    {% if summary_table %}
+                        {% for data in standard_data.result.fast_dp_row %}
+                            <td>{{ data }}</td>
+                        {% endfor %}
+                    {% elif auto_proc_table %}
+                        {% for data in standard_data.result.auto_proc_row %}
+                            <td>{{ data }}</td>
+                        {% endfor %}
+                    {% endif %}
+                </tr>
             {% endfor %}
-            {% elif auto_proc_table %}
-            {% for data in standard_data.result.auto_proc_row %}
-            <td>{{ data }}</td>
-            {% endfor %}
-            {% endif %}
-        </tr>
-        {% endfor %}
         {% endfor %}
         {% endfor %}
     </tbody>

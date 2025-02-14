@@ -20,7 +20,7 @@ import matplotlib
 import tqdm
 import os
 from amostra.client import commands as amostra_client
-from analysisstore.client import commands as analysis_client
+from analysisstore.client.commands import AnalysisClient
 from utils.models import (
     Sample,
     Request,
@@ -235,9 +235,7 @@ amostra_db_params = {"host": os.environ["MONGODB"], "port": "7770"}
 request_collection = amostra_client.RequestReference(**amostra_db_params)
 sample_collection = amostra_client.SampleReference(**amostra_db_params)
 container_collection = amostra_client.ContainerReference(**amostra_db_params)
-analysis_store_client = analysis_client.AnalysisClient(
-    {"host": os.environ["MONGODB"], "port": "7773"}
-)
+analysis_store_client = AnalysisClient({"host": os.environ["MONGODB"], "port": "7773"})
 
 
 def get_auto_collections(base_path: Path) -> Tuple[List[Request], Dict[str, Any]]:
@@ -349,8 +347,9 @@ def process_manual_collections(
     puck_data: dict[PuckName, List[SampleName]] = defaultdict(list)
     requests: Dict[UUID, List[Request]] = defaultdict(list)
     for request in manual_collections:
-        requests[request.sample].append(request)
-        sample_ids.add(str(request.sample))
+        if request.request_def.directory.exists():
+            requests[request.sample].append(request)
+            sample_ids.add(str(request.sample))
 
     sample_data = get_sample_data(sample_ids)
     puck_data = get_puck_data(sample_data)
@@ -373,8 +372,30 @@ def process_manual_collections(
             sample=sample, rasters=rasters, standards=standards, vectors=vectors
         )
         sample_collections[sample.name] = manual_collection
+
+    # This block of code tries to get the proposal number and beamline name
+    # Because its not straightforward
+    beamline = proposal = None
+    for sample, manual_collection in sample_collections.items():
+        collection_considered = None
+        if manual_collection.standards:
+            collection_considered = manual_collection.standards
+        elif manual_collection.rasters:
+            collection_considered = manual_collection.rasters
+        elif manual_collection.vectors:
+            collections_considered = manual_collection.vectors
+        if collection_considered:
+            for request in collection_considered.values():
+                beamline = request.request_def.beamline.upper()
+                break
+        proposal = manual_collection.sample.proposal_id
+        break
+
     collection_data = CollectionData(
-        sample_collections=sample_collections, puck_data=puck_data
+        sample_collections=sample_collections,
+        puck_data=puck_data,
+        beamline=beamline,
+        proposal=proposal,
     )
     return collection_data
 
@@ -445,8 +466,16 @@ def process_automated_collections(
         )
         sample_collections[sample.name] = auto_collection
 
+    beamline = next(
+        iter(next(iter(sample_collections.values())).standard.values())
+    ).request_def.beamline.upper()
+
+    proposal = next(iter(sample_collections.values())).sample.proposal_id
     collection_data = CollectionData(
-        sample_collections=dict(sample_collections), puck_data=puck_data
+        sample_collections=dict(sample_collections),
+        puck_data=puck_data,
+        beamline=beamline,
+        proposal=proposal,
     )
     return collection_data
 
@@ -493,9 +522,12 @@ def determine_raster_shape(raster_def):
 
 
 def get_raster_results(request_uids: List[str]) -> Dict[UUID, RasterResult]:
-    client = pymongo.MongoClient(os.environ["MONGODB"])
-    raster_result_data = client.analysisstore.analysis_header.find(
-        {"request": {"$in": request_uids}, "result_type": "rasterResult"}
+    # client = pymongo.MongoClient(os.environ["MONGODB"])
+    # raster_result_data = client.analysisstore.analysis_header.find(
+    #    {"request": {"$in": request_uids}, "result_type": "rasterResult"}
+    # )
+    raster_result_data = analysis_store_client.find_analysis_header(
+        **{"request": {"$in": request_uids}, "result_type": "rasterResult"}
     )
     raster_results = {}
     for raster_data in raster_result_data:
@@ -543,7 +575,7 @@ def get_raster_spot_count(req, include_files=False):
 
 def get_spot_positions(req: Request, indices, reso_table):
     # if req["request_obj"]["max_raster"]["index"] is not None:
-    if req.request_def.max_raster.index is not None:
+    if req.request_def.max_raster and req.request_def.max_raster.index is not None:
         # max_index = req["request_obj"]["max_raster"]["index"] + 1
         max_index = req.request_def.max_raster.index + 1
         indices = [max_index] + indices

@@ -1,3 +1,4 @@
+<h1>Vector</h1>
 <table class="table">
     <thead>
         <tr>
@@ -12,13 +13,13 @@
     </thead>
     <tbody>
         <tr>
-            <td>{{ standard_data.uid }}</td>
-            <td>{{ standard_data.result.result_time }}</td>
-            <td>{{ standard_data.request_def.sweep_start }}</td>
-            <td>{{ standard_data.request_def.sweep_end }}</td>
-            <td>{{ standard_data.request_def.img_width }}</td>
-            <td>{{ standard_data.request_def.exposure_time }}</td>
-            <td>{{ standard_data.request_def.det_dist }}</td>
+            <td>{{ vector_data.uid }}</td>
+            <td>{{ vector_data.request_time }}</td>
+            <td>{{ vector_data.request_def.sweep_start }}</td>
+            <td>{{ vector_data.request_def.sweep_end }}</td>
+            <td>{{ vector_data.request_def.img_width }}</td>
+            <td>{{ vector_data.request_def.exposure_time }}</td>
+            <td>{{ vector_data.request_def.detector_distance }}</td>
         </tr>
     </tbody>
 </table>
@@ -38,21 +39,16 @@
     </thead>
     <tbody>
         <tr>
-            {% for data in standard_data.result.fast_dp_row %}
+            {% for data in vector_data.result.fast_dp_row %}
             <td>{{ data }}</td>
             {% endfor %}
         </tr>
     </tbody>
 </table>
-{% if standard_data.result.diffraction_images %}
+{% if vector_data.result.diffraction_images %}
 <div class="plot">
-    <h2>Standard collection diffraction images</h2>
-    <img src="data:image/png;base64,{{ standard_data.result.diffraction_images }}" alt="Diffraction Images">
+    <h2>Vector collection diffraction images</h2>
+    <img src="data:image/png;base64,{{ vector_data.result.diffraction_images }}" alt="Diffraction Images">
 </div>
 {% endif %}
 <hr class="my-2" style="border-top: 1px solid lightgray; width: 50%;">
-{% if standard_id in sample_data.rasters %}
-    {% for raster_id, raster_data in sample_data.rasters[standard_id].items() %}
-    {% include 'raster_template.html' %}
-    {% endfor %}
-{% endif %}
