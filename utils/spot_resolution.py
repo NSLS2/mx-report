@@ -52,9 +52,12 @@ def extract_raster_metadata_h5(raster_dir: pathlib.Path) -> dict:
 
 def get_points(spot_file):
     """dozor spot file to numpy array with columns: x,y, and intensity"""
-    df1 = pd.read_table(spot_file, delimiter="\s+", header=None, skiprows=3)
-    return df1.to_numpy()[:, 1:4]
-
+    try:
+        df1 = pd.read_table(spot_file, delimiter="\s+", header=None, skiprows=3)
+        return df1.to_numpy()[:, 1:4]
+    except Exception as e:
+        print(f"Could not get points from {spot_file} : {e}")
+        return np.array([[0,0,0]])
 
 def get_distances(points: np.array, experiment_metadata: dict) -> np.array:
     """Get k nearest neighbor distances for each spot. Will initially generate
@@ -96,22 +99,26 @@ def process_rasters(raster_dir: pathlib.Path) -> pd.DataFrame:
     resolution, spot count, and nearest neighbor distance. Once scan is processed
     then z-scores are computed for each feature and combined into a custom weighting function
     for the final score."""
-    spot_files = gather_spot_files(raster_dir)
-    experiment_metadata = extract_raster_metadata_h5(raster_dir)
-    rows = []
-    for sf in spot_files:
-        frame = int(sf.split("/")[-1].split(".")[0])
-        points = get_points(sf)
-        res = get_resolution(points, experiment_metadata)
-        distances = get_distances(points, experiment_metadata)
-        raster_result = {
-            "frame": frame,
-            "median_resolution": np.median(res),
-            "max_resolution": np.min(res),
-            "mean_neighbor_dist": np.mean(distances),
-            "spot_count": len(res),
-        }
-        rows.append(raster_result)
+    try:
+        spot_files = gather_spot_files(raster_dir)
+        experiment_metadata = extract_raster_metadata_h5(raster_dir)
+        rows = []
+        for sf in spot_files:
+            frame = int(sf.split("/")[-1].split(".")[0])
+            points = get_points(sf)
+            res = get_resolution(points, experiment_metadata)
+            distances = get_distances(points, experiment_metadata)
+            raster_result = {
+                "frame": frame,
+                "median_resolution": np.median(res),
+                "max_resolution": np.min(res),
+                "mean_neighbor_dist": np.mean(distances),
+                "spot_count": len(res),
+            }
+            rows.append(raster_result)
+    except Exception as e:
+        print(f"Exception while processing rasters in {raster_dir} : {e}")
+        rows = []
     df = pd.DataFrame(
         rows,
         columns=[

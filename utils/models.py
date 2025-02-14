@@ -8,6 +8,7 @@ from pathlib import Path
 PuckName = NewType("PuckName", str)
 SampleName = NewType("SampleName", str)
 
+
 class RequestType(str, Enum):
     standard = "standard"
     raster = "raster"
@@ -18,6 +19,7 @@ class BaseRequestDefinition(BaseModel):
     sample: UUID
     sweep_start: float
     sweep_end: float
+    osc_range: Optional[float] = None
     img_width: float
     exposure_time: float
     protocol: RequestType

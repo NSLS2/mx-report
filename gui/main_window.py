@@ -49,7 +49,7 @@ class MainWindow(QtWidgets.QMainWindow):
         super().__init__(*args, **kwargs)
         self.setWindowTitle(f"Data explorer at {self.config.get('beamline', '99id1')}")
         self.albulaInterface = AlbulaInterface(
-            python_path="/opt/conda_envs/lsdc-gui-2023-2.3/bin/python"
+            python_path="/nsls2/software/mx/daq/conda_env/lsdc-37/bin/python"
         )
         # self.albulaInterface.open_file("/nsls2/data/amx/proposals/2024-1/pass-314921/314921-20240224-dtime/mx314921-1/tlys-676/1/FGZ-009_1/tlys-676_10289_master.h5")
         # self.data_path = Path("/nsls2/data/amx/proposals/2024-2/pass-312346/312346-20240801-ragusa_dartmouth_standby/mx312346-1")
@@ -117,26 +117,18 @@ class MainWindow(QtWidgets.QMainWindow):
                 for standard_uid, standard_req in data.standard.items():
                     # fast_dp_row = utils.get_standard_fastdp_summary(standard_req['request_obj']['directory'])
                     # fast_dp_row = fast_dp_row if fast_dp_row is not None else (sample_name,) + ("N/A",) * 19
-                    blank_row = [
-                        sample_name,
-                    ] + [
-                        "-",
-                    ] * 19
+                    blank_row = [sample_name,] + ["-",] * 19
                     fast_dp_row = (
                         standard_req.result.fast_dp_row
-                        if standard_req.result.fast_dp_row
+                        if (standard_req.result and standard_req.result.fast_dp_row)
                         else blank_row
                     )
                     fast_dp_row[0] = sample_name
                     self.full_summary_table.add_data(fast_dp_row)
-                    blank_row_autoproc = [
-                        sample_name,
-                    ] + [
-                        "-",
-                    ] * 19
+                    blank_row_autoproc = [sample_name,] + ["-",] * 19
                     auto_proc_row = (
                         standard_req.result.auto_proc_row
-                        if standard_req.result.auto_proc_row
+                        if (standard_req.result and standard_req.result.auto_proc_row)
                         else blank_row_autoproc
                     )
                     if not auto_proc_row:

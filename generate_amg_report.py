@@ -205,16 +205,21 @@ def generate_standard_collection_report_data(
     fast_dp_row = utils.get_standard_fastdp_summary(
         standard_collection.request_def.directory
     )
-    if fast_dp_row is None:
+    try:
         diffraction_images = None
-        fast_dp_row = (sample,) + ("-",) * 19
-    else:
-        diffraction_images = utils.create_grid_matplotlib_image(
-            utils.get_standard_images(
-                standard_collection.request_def.file_prefix,
-                standard_collection.request_def.directory,
+        if fast_dp_row:
+            diffraction_images = utils.create_grid_matplotlib_image(
+                utils.get_standard_images(
+                    standard_collection.request_def.file_prefix,
+                    standard_collection.request_def.directory,
+                )
             )
-        )
+    except Exception as e:
+        print(f"Exception in generating diffraction images: {e}")
+        diffraction_images = None
+    if fast_dp_row is None:
+        # diffraction_images = None
+        fast_dp_row = (sample,) + ("-",) * 19
     fast_dp_row = list(fast_dp_row)
     fast_dp_row[0] = (
         f'<a href="{toc_data.get(sample, {"href": "#"})["href"]}">{fast_dp_row[0]}</a>'
@@ -293,9 +298,11 @@ def generate_raster_report_data(raster_req: Request, collection_data_path:Path):
 
 def process_single_collection(
     full_data: Dict[SampleName, CollectionType],
+    #sample_data,
     sample: SampleName,
     collection_data_path,
     toc_data,
+    lock,
 ):
     sample_data: CollectionType = full_data[sample]
     if isinstance(sample_data, AutomatedCollection):
@@ -309,10 +316,8 @@ def process_single_collection(
             generate_standard_collection_report_data(standard_collection, sample, toc_data)
         for raster_req in sample_data.rasters.values():
             generate_raster_report_data(raster_req, collection_data_path)
-    
-    full_data[sample] = sample_data
-    # with lock:
-    #    completed.value += 1
+    with lock:
+        full_data[sample] = sample_data
     print(f"Finished processing: {sample}")
 
 
@@ -361,7 +366,8 @@ def generate_report(
             # Initialize the shared dictionary with the existing dictionary
             full_data = manager.dict(full_data)
             completed = multiprocessing.Value("i", 0)
-            lock = multiprocessing.Lock()
+            queue = manager.Queue()
+            lock = manager.Lock()
 
             # Create a pool of worker processes
             with multiprocessing.Pool(processes=num_processes) as pool:
@@ -369,14 +375,18 @@ def generate_report(
                 pool.starmap(
                     process_single_collection,
                     [
-                        (full_data, sample, collection_data_path, toc_data)
+                        #(full_data[sample], sample, collection_data_path, toc_data, lock, queue)
+                        (full_data, sample, collection_data_path, toc_data, lock)
                         for sample in samples
                     ],
                     # callback=lambda _: pbar.update(completed)
                 )
 
             # Convert shared dictionary to a regular dictionary
-            full_data = dict(full_data)  # Convert to a standard Python dict
+            # full_data = dict(full_data)  # Convert to a standard Python dict
+            while not queue.empty():
+                full_data.update(queue.get())
+            full_data = dict(full_data)
         json_data.sample_collections = full_data
 
     end_time = time.time()
@@ -405,7 +415,7 @@ def generate_report(
 def main():
     parser = init_argparse()
     args = parser.parse_args()
-    current_directory = Path.cwd()
+    current_directory = Path(os.environ.get("PWD", Path.cwd()))
 
     report_directory = current_directory / Path(args.output_dir)
     report_directory.mkdir(exist_ok=True)

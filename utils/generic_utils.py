@@ -1,6 +1,5 @@
 # import ipywidgets as widgets
 import time
-import pymongo
 from pathlib import Path
 from collections import defaultdict
 import numpy as np
@@ -76,7 +75,10 @@ def create_histogram_image(
 ) -> str:
     values = [df[column].to_numpy() for column in columns]
     plt.figure(figsize=(6, 4))
-    plt.hist(values, bins=20, label=columns, histtype="stepfilled", color=color)
+    try:
+        plt.hist(values, bins=20, label=columns, histtype="stepfilled", color=color)
+    except ValueError as e:
+        print(e)
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
     plt.title(title)
@@ -182,7 +184,8 @@ def get_standard_images(file_prefix: str, directory: Path) -> list[np.ndarray]:
 def get_standard_fastdp_summary(directory: Path) -> Optional[Any]:
     fastdp_file_path = Path(directory) / Path("fastDPOutput/fast_dp.xml")
     if fastdp_file_path.exists():
-        return parse_fdp_xml(str(fastdp_file_path))
+        output = parse_fdp_xml(str(fastdp_file_path))
+        return output
     return None
 
 
@@ -242,10 +245,15 @@ analysis_store_client = analysis_client.AnalysisClient(
 
 def get_auto_collections(base_path: Path) -> Tuple[List[Request], Dict[str, Any]]:
     path_to_remove = Path("/nsls2/data4")
+    try:
+        base_path = base_path.relative_to(path_to_remove)
+    except Exception as e:
+        print(e)
+    print(f"Getting collections in path: {base_path}")
     auto_collections = request_collection.find(
         **{
             "request_obj.directory": {
-                "$regex": f"{base_path.relative_to(path_to_remove)}"
+                "$regex": f"{base_path}"
             },
             "request_obj.centeringOption": "AutoRaster",
         }
@@ -312,7 +320,7 @@ def get_sample_data(sample_ids: set[str]) -> dict[SampleName, Sample]:
 
 
 def get_puck_data(
-    sample_data: dict[SampleName, Sample]
+    sample_data: dict[SampleName, Sample],
 ) -> dict[PuckName, List[SampleName]]:
     puck_data = {}
     puck_ids = set()
@@ -417,21 +425,29 @@ def process_automated_collections(
     sample_ids = set()
     puck_ids = set()
     requests: Dict[UUID, List[Request]] = defaultdict(list)
-    standard_ids = set()
+    standard_ids: Dict[str, Request] = {}
 
     for standard_request in auto_collections:
-        if str(standard_request.uid) in auto_collection_results:
-            requests[standard_request.sample].append(standard_request)
-            sample_ids.add(str(standard_request.sample))
-            standard_ids.add(str(standard_request.uid))
+        # First make a dictionary of all standard collection to filter out ones
+        # were not run (meaning no rasters were collected)
+        standard_ids[str(standard_request.uid)] = standard_request
 
     print("Getting sample, puck and raster results from database...")
     start_time = time.time()
+    raster_data, raster_req_uids = get_autoraster_data(set(standard_ids.keys()))
+    for standard_id in raster_data.keys():
+        # standard_id in raster_data tells us that atleast 1 raster was collected
+        standard_request = standard_ids[str(standard_id)]
+        requests[standard_request.sample].append(standard_request)
+        sample_ids.add(str(standard_request.sample))
+    
     sample_data = get_sample_data(sample_ids)
     puck_data = get_puck_data(sample_data)
-    raster_data, raster_req_uids = get_autoraster_data(standard_ids)
     elapsed_time = time.time() - start_time
     print(f"Finished fetching database data. Time elapsed: {elapsed_time} seconds")
+
+    
+    
     sample_collections: dict[SampleName, CollectionType] = {}
     for sample in sample_data.values():
         std_collections: Dict[UUID, Request] = {}
@@ -477,8 +493,7 @@ def determine_raster_shape(raster_def):
     """
     if (
         # raster_def["rowDefs"][0]["start"]["y"] == raster_def["rowDefs"][0]["end"]["y"]
-        raster_def.row_defs[0].start.y
-        == raster_def.row_defs[0].end.y
+        raster_def.row_defs[0].start.y == raster_def.row_defs[0].end.y
     ):  # this is a horizontal raster
         raster_dir = "horizontal"
     else:
@@ -493,9 +508,8 @@ def determine_raster_shape(raster_def):
 
 
 def get_raster_results(request_uids: List[str]) -> Dict[UUID, RasterResult]:
-    client = pymongo.MongoClient(os.environ["MONGODB"])
-    raster_result_data = client.analysisstore.analysis_header.find(
-        {"request": {"$in": request_uids}, "result_type": "rasterResult"}
+    raster_result_data = analysis_store_client.find_analysis_header(
+        **{"request": {"$in": request_uids}, "result_type": "rasterResult"}
     )
     raster_results = {}
     for raster_data in raster_result_data:
@@ -567,61 +581,64 @@ def get_spot_positions(req: Request, indices, reso_table):
         row = (idx - 1) // req.request_def.raster_def.row_defs[0].num_steps
         path = Path(req.request_def.directory) / Path(f"dozor/row_{row}/{idx:05d}.spot")
         if path.exists():
-            df = pd.read_csv(path, skiprows=3, delimiter="\s+", header=None).to_numpy()[
-                :, 1:4
-            ]
-            diff = df - beam_center
-            distances = np.sqrt(diff[:, 0] ** 2 + diff[:, 1] ** 2)
-            radius = np.max(distances)
-            median_radius = np.median(distances)
-            circle = Circle((0, 0), radius, color="blue", fill=False, linestyle="--")
-            circle2 = Circle(
-                (0, 0), median_radius, color="green", fill=False, linestyle="--"
-            )
-            axs[i].add_patch(circle)
-            axs[i].add_patch(circle2)
-            matches = reso_table[reso_table["frame"] == idx]["max_resolution"]
-            median_matches = reso_table[reso_table["frame"] == idx]["median_resolution"]
-            if len(matches) > 0:
-                max_resolution = matches.values[0]
-                median_resolution = median_matches.values[0]
-            else:
-                max_resolution = 0
-                median_resolution = 0
-            axs[i].text(
-                0,
-                radius + 5,
-                f"{max_resolution:.2f} Å",
-                color="red",
-                bbox=dict(
-                    facecolor="white",
-                    edgecolor="black",
-                    boxstyle="round,pad=0.5",
-                    alpha=1,
-                ),
-                zorder=10,
-            )
-            axs[i].text(
-                0,
-                median_radius + 5,
-                f"{median_resolution:.2f} Å",
-                color="red",
-                bbox=dict(
-                    facecolor="white",
-                    edgecolor="black",
-                    boxstyle="round,pad=0.5",
-                    alpha=1,
-                ),
-                zorder=10,
-            )
+            try:
+                df = pd.read_csv(path, skiprows=3, delimiter="\s+", header=None).to_numpy()[
+                    :, 1:4
+                ]
+                diff = df - beam_center
+                distances = np.sqrt(diff[:, 0] ** 2 + diff[:, 1] ** 2)
+                radius = np.max(distances)
+                median_radius = np.median(distances)
+                circle = Circle((0, 0), radius, color="blue", fill=False, linestyle="--")
+                circle2 = Circle(
+                    (0, 0), median_radius, color="green", fill=False, linestyle="--"
+                )
+                axs[i].add_patch(circle)
+                axs[i].add_patch(circle2)
+                matches = reso_table[reso_table["frame"] == idx]["max_resolution"]
+                median_matches = reso_table[reso_table["frame"] == idx]["median_resolution"]
+                if len(matches) > 0:
+                    max_resolution = matches.values[0]
+                    median_resolution = median_matches.values[0]
+                else:
+                    max_resolution = 0
+                    median_resolution = 0
+                axs[i].text(
+                    0,
+                    radius + 5,
+                    f"{max_resolution:.2f} Å",
+                    color="red",
+                    bbox=dict(
+                        facecolor="white",
+                        edgecolor="black",
+                        boxstyle="round,pad=0.5",
+                        alpha=1,
+                    ),
+                    zorder=10,
+                )
+                axs[i].text(
+                    0,
+                    median_radius + 5,
+                    f"{median_resolution:.2f} Å",
+                    color="red",
+                    bbox=dict(
+                        facecolor="white",
+                        edgecolor="black",
+                        boxstyle="round,pad=0.5",
+                        alpha=1,
+                    ),
+                    zorder=10,
+                )
 
-            axs[i].set_aspect("equal", adjustable="box")
+                axs[i].set_aspect("equal", adjustable="box")
 
-            axs[i].scatter(
-                diff[:, 0], diff[:, 1], c=np.log(df[:, 2]), cmap="inferno", marker="."
-            )
-            axs[i].set_title(f"Frame {idx}")
-            # axs[i].axis('off')  # Hide the axes
+                axs[i].scatter(
+                    diff[:, 0], diff[:, 1], c=np.log(df[:, 2]), cmap="inferno", marker="."
+                )
+                axs[i].set_title(f"Frame {idx}")
+                # axs[i].axis('off')  # Hide the axes
+            except Exception as e:
+                print(f"Could not generate spot images for {path} : {e}")
         else:
             print(f"File path {path} not found")
 
