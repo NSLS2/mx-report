@@ -192,10 +192,13 @@ def get_standard_fastdp_summary(directory: Path) -> Optional[Any]:
 def get_standard_autoproc_summary(directory: Path) -> Optional[Any]:
     autoproc_file_path = Path(directory) / Path("autoProcOutput/autoPROC.xml")
     autoproc_file_path1 = Path(directory) / Path("autoProcOutput1/autoPROC.xml")
-    if autoproc_file_path.exists():
-        return parse_fdp_xml(str(autoproc_file_path))
-    elif autoproc_file_path1.exists():
-        return parse_fdp_xml(str(autoproc_file_path1))
+    try:
+        if autoproc_file_path.exists():
+            return parse_fdp_xml(str(autoproc_file_path))
+        elif autoproc_file_path1.exists():
+            return parse_fdp_xml(str(autoproc_file_path1))
+    except Exception as e:
+        print(f"Exception while parsing autoProcOutput in {directory}")
     return None
 
 
