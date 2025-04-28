@@ -137,6 +137,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.autoproc_summary_table.add_data(auto_proc_row)
 
     def handle_tree_clicked(self, data: dict):
+        if not data:
+            return
         if data["item_type"] == "raster":
             self.canvas.setHidden(False)
             self.sample_cam_image.setHidden(False)
